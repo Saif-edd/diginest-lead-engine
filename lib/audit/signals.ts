@@ -130,11 +130,8 @@ const appointmentPathPattern =
 const bookingProviderPattern =
   /(?:calendly\.com|doctolib\.[^/]+|zocdoc\.com|setmore\.com|acuityscheduling\.com|simplybook\.me|mindbodyonline\.com|booksy\.com|fresha\.com|nookal\.com)/i;
 
-function contextualBlocks(document: Document) {
-  return elements(
-    document,
-    "section,article,main,header,footer,blockquote,h2,h3,h4,div,li,a",
-  );
+function contextualBlocks(document: Document, selector: string) {
+  return elements(document, selector);
 }
 
 function reviewEvidence(document: Document, baseUrl: string) {
@@ -143,7 +140,10 @@ function reviewEvidence(document: Document, baseUrl: string) {
     /testimonial|patient\s+reviews?|customer\s+reviews?|client\s+reviews?|what\s+our\s+(?:patients?|customers?|clients?)\s+say|avis\s+clients?/i;
   const reviewClass = /review|testimonial|rating|feedback/i;
   const quotePattern = /[“”"'].*\S.*[“”"']/;
-  for (const element of contextualBlocks(document)) {
+  for (const element of contextualBlocks(
+    document,
+    "section,article,blockquote,h1,h2,h3,h4,h5,h6,[class*='review'],[id*='review'],[class*='testimonial'],[id*='testimonial'],li",
+  )) {
     if (!isVisible(element) || !elementHasMeaningfulText(element, 18)) continue;
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
@@ -193,7 +193,10 @@ function teamEvidence(document: Document, baseUrl: string) {
   const profileClass = /team|doctor|dentist|therapist|staff|profile|provider/i;
   const titleOrCredential = /\b(?:dr\.?|doctor|dentist|therapist|physiotherapist|physician|specialist|dds|dmd|md|rn)\b/i;
   const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/;
-  for (const element of contextualBlocks(document)) {
+  for (const element of contextualBlocks(
+    document,
+    "section,article,h1,h2,h3,h4,h5,h6,a,[class*='team'],[id*='team'],[class*='doctor'],[id*='doctor'],[class*='dentist'],[id*='dentist'],[class*='therapist'],[id*='therapist'],[class*='staff'],[id*='staff'],[class*='profile'],[id*='profile']",
+  )) {
     if (!isVisible(element) || !elementHasMeaningfulText(element, 12)) continue;
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
@@ -234,7 +237,10 @@ function servicesEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
   const servicesHeading = /services?|treatments?|procedures?|what\s+we\s+(?:do|offer)|soins?|traitements?|prestations?/i;
   const servicePath = /(?:^|[/_-])(services?|treatments?|procedures?)(?:[/_?#-]|$)/i;
-  for (const element of contextualBlocks(document)) {
+  for (const element of contextualBlocks(
+    document,
+    "section,article,h1,h2,h3,h4,h5,h6,li,a,[class*='service'],[id*='service'],[class*='treatment'],[id*='treatment'],[class*='procedure'],[id*='procedure']",
+  )) {
     if (!isVisible(element) || !elementHasMeaningfulText(element, 18)) continue;
     const text = cleanText(element.textContent);
     const heading = /^h[1-6]$/i.test(element.tagName) && servicesHeading.test(text);
@@ -264,12 +270,15 @@ const streetAddress = /\b\d{1,5}\s+[\w.'-]+(?:\s+[\w.'-]+){0,5}\s+(?:street|st\.
 function meaningfulAddress(text: string) {
   const cleaned = cleanText(text);
   if (cleaned.length < 8) return false;
-  return streetAddress.test(cleaned) || /\b(?:building|tower|floor|suite|unit|mall|healthcare|medical\s+city|district|centre|center)\b/i.test(cleaned) || /\d/.test(cleaned) && cleaned.split(" ").length >= 3;
+  return (
+    streetAddress.test(cleaned) ||
+    /\b(?:building|tower|floor|suite|unit|mall|healthcare|medical\s+city|district|centre|center|villa|village|area)\b/i.test(cleaned)
+  );
 }
 
 function locationEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
-  for (const element of elements(document, "address,[class*='address' i],[id*='address' i],[class*='location' i],[id*='location' i],footer,section,div")) {
+  for (const element of elements(document, "address,[class*='address' i],[id*='address' i],[class*='location' i],[id*='location' i],footer,section")) {
     if (!isVisible(element)) continue;
     const text = cleanText(element.textContent);
     if (!meaningfulAddress(text)) continue;
