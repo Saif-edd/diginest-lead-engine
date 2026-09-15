@@ -122,10 +122,37 @@ function collectInteractive(
   );
 }
 
+function whatsappWidgetEvidence(document: Document, baseUrl: string) {
+  return uniqueEvidence(
+    elements(document, "[data-settings], [aria-label*='whatsapp' i], [class*='joinchat' i], [id*='whatsapp' i]")
+      .filter((element) => {
+        if (!isVisible(element)) return false;
+        const attributes = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""} ${element.getAttribute("aria-label") ?? ""}`;
+        const settings = element.getAttribute("data-settings") ?? "";
+        const hasTelephoneSetting = /["']?telephone["']?\s*:\s*["']?\+?\d{7,}/i.test(settings);
+        return /whatsapp|joinchat/i.test(attributes) && (hasTelephoneSetting || /whatsapp/i.test(attributes));
+      })
+      .map((element) => {
+        const labeledDescendant = elements(element, "[aria-label*='whatsapp' i]")[0];
+        const label =
+          element.getAttribute("aria-label") ||
+          labeledDescendant?.getAttribute("aria-label") ||
+          cleanText(element.textContent) ||
+          "WhatsApp widget";
+        return makeEvidence(
+          element,
+          baseUrl,
+          "WhatsApp link or visible WhatsApp widget with contact destination",
+          label,
+        );
+      }),
+  );
+}
+
 const phonePattern = /(?:\+?\d[\d\s().-]{6,}\d)/;
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const appointmentTextPattern =
-  /\b(?:book(?:\s+(?:an?|your))?\s+appointment|book\s+now|schedule(?:\s+(?:an?|your))?\s+appointment|request(?:\s+(?:an?|your))?\s+appointment|make(?:\s+(?:an?|your))?\s+appointment|appointment\s+booking|reserve(?:\s+(?:an?|your))?\s+appointment|rendez[- ]vous|prendre\s+rendez[- ]vous)\b/i;
+  /\b(?:book(?:\s+(?:an?|your))?\s+(?:appointment|visit)|book\s+now|schedule(?:\s+(?:an?|your))?\s+appointment|request(?:\s+(?:an?|your))?\s+appointment|make(?:\s+(?:an?|your))?\s+appointment|appointment\s+booking|reserve(?:\s+(?:an?|your))?\s+appointment|rendez[- ]vous|prendre\s+rendez[- ]vous)\b/i;
 const appointmentPathPattern =
   /(?:^|[/_-])(book|booking|appointment|appointments|calendar)(?:[/_?#-]|$)/i;
 const bookingProviderPattern =
@@ -411,12 +438,15 @@ export function detectHtmlSignals(
       "visible phone number in semantic contact content",
     ),
   ]);
-  const whatsappEvidence = collectAnchors(
-    document,
-    baseUrl,
-    (href) => /(?:wa\.me|api\.whatsapp\.com|whatsapp\.com|whatsapp:)/i.test(href),
-    "WhatsApp destination URL",
-  );
+  const whatsappEvidence = uniqueEvidence([
+    ...collectAnchors(
+      document,
+      baseUrl,
+      (href) => /(?:wa\.me|api\.whatsapp\.com|whatsapp\.com|whatsapp:)/i.test(href),
+      "WhatsApp destination URL",
+    ),
+    ...whatsappWidgetEvidence(document, baseUrl),
+  ]);
   const emailEvidence = uniqueEvidence([
     ...collectAnchors(
       document,

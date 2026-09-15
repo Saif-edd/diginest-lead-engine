@@ -143,6 +143,28 @@ describe("deterministic HTML signal detection", () => {
     expect(Object.keys(audit.signalEvidence ?? {})).toEqual(["email"]);
   });
 
+  it("recognizes a strong Book a Visit CTA and a rendered WhatsApp widget", () => {
+    const audit = detectHtmlSignals(
+      `<html><body>
+        <a href="/schedule-a-tour/"><span>Book a Visit</span></a>
+        <div class="joinchat" data-settings='{"telephone":"971504928480"}'>
+          <div class="joinchat__button" role="button" aria-label="WhatsApp Contact"></div>
+        </div>
+      </body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.bookingFound).toBe(true);
+    expect(audit.bookingEvidence?.[0]).toContain("Book a Visit");
+    expect(audit.whatsappFound).toBe(true);
+    expect(audit.signalEvidence?.whatsapp?.[0]).toMatchObject({
+      exactText: "WhatsApp Contact",
+      element: "div",
+      detectionRule: "WhatsApp link or visible WhatsApp widget with contact destination",
+      visible: true,
+      sourceUrl: "https://example.test/",
+    });
+  });
+
   it("preserves hidden state in structured evidence without counting hidden controls", () => {
     const audit = detectHtmlSignals(
       `<html><body>
