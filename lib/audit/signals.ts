@@ -336,6 +336,7 @@ function servicesEvidence(document: Document, baseUrl: string) {
 
 const locationLabel = /\b(?:find\s+us|our\s+location|location|address|directions|where\s+to\s+find\s+us|adresse|localisation)\b/i;
 const streetAddress = /\b\d{1,5}\s+[\w.'-]+(?:\s+[\w.'-]+){0,5}\s+(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|way|lane|ln\.?|drive|building|tower|mall|centre|center|clinic|city)\b/i;
+const localityAddress = /\b[^,]{2,},\s*[^,]{2,}(?:,\s*[^,]{2,}){0,2}\b/;
 
 function meaningfulAddress(text: string) {
   const cleaned = cleanText(text);
@@ -350,18 +351,22 @@ function locationEvidence(document: Document, baseUrl: string) {
     if (/^(html|body|main|header)$/i.test(element.tagName)) continue;
     if (!isVisible(element)) continue;
     const text = cleanText(element.textContent);
-    if (!meaningfulAddress(text)) continue;
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
     const semanticAddress = element.tagName.toLowerCase() === "address" || /address|location/i.test(classAndId);
+    const hasMapMarker = elements(element, "[class*='map' i],[class*='marker' i],[aria-label*='location' i]").some(isVisible);
+    if (!meaningfulAddress(text) && !(hasMapMarker && localityAddress.test(text))) continue;
     const addressLikeChild = elements(element, "address,p,li,span,a").find((candidate) =>
       isVisible(candidate) &&
-      meaningfulAddress(cleanText(candidate.textContent)) &&
+      (meaningfulAddress(cleanText(candidate.textContent)) ||
+        (hasMapMarker && localityAddress.test(cleanText(candidate.textContent)))) &&
       cleanText(candidate.textContent).length <= 280,
     );
     const sourceElement = element.tagName.toLowerCase() === "address"
       ? element
       : addressLikeChild ?? element;
-    if (semanticAddress || (locationLabel.test(text) && (streetAddress.test(text) || Boolean(addressLikeChild)))) {
+    if (semanticAddress ||
+      (locationLabel.test(text) && (streetAddress.test(text) || Boolean(addressLikeChild))) ||
+      (hasMapMarker && Boolean(addressLikeChild))) {
       result.push(
         makeEvidence(
           sourceElement,
