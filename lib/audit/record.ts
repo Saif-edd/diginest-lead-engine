@@ -39,6 +39,7 @@ export function emptyWebsiteAudit(
     servicesEvidence: [],
     locationIndicators: false,
     locationEvidence: [],
+    signalEvidence: {},
     retryCount: 0,
   };
 }

@@ -46,6 +46,29 @@ export interface AuditPerformance {
   measuredAt?: string;
 }
 
+export type AuditSignalName =
+  | "phone"
+  | "whatsapp"
+  | "email"
+  | "booking"
+  | "contactForm"
+  | "reviews"
+  | "team"
+  | "services"
+  | "location"
+  | "googleMaps"
+  | "social";
+
+export interface AuditSignalEvidence {
+  exactText: string;
+  element: string;
+  href?: string;
+  detectionRule: string;
+  nearbyContext?: string;
+  visible: boolean;
+  sourceUrl: string;
+}
+
 export interface WebsiteAudit {
   objectiveAuditStatus?: ObjectiveAuditStatus;
   qualitativeAuditStatus?: QualitativeAuditStatus;
@@ -110,6 +133,8 @@ export interface WebsiteAudit {
   servicesEvidence?: string[];
   locationIndicators?: boolean;
   locationEvidence?: string[];
+  /** Element-level evidence for every positive deterministic signal. */
+  signalEvidence?: Partial<Record<AuditSignalName, AuditSignalEvidence[]>>;
   failureReason?: AuditFailureReason;
   failureMessage?: string;
   retryCount?: number;

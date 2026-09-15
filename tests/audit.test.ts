@@ -71,8 +71,19 @@ describe("deterministic HTML signal detection", () => {
         <form action="/contact"><input name="name"><button>Send</button></form>
         <a href="https://maps.google.com/?q=Harbor+Dental">Directions</a>
         <a href="https://www.instagram.com/harbor">Instagram</a>
-        <p>Read our patient reviews. Meet our doctors. Services and treatments.</p>
-        <address>Dubai Healthcare City</address>
+        <section class="testimonials">
+          <h2>Patient Reviews</h2>
+          <blockquote>“The team made my treatment comfortable and clear.” — Samira</blockquote>
+        </section>
+        <section>
+          <h2>Meet our doctors</h2>
+          <div class="doctor-card">Dr. Noor Alia, DDS — restorative dentist</div>
+        </section>
+        <section>
+          <h2>Services</h2>
+          <ul><li>Dental implants</li><li>Teeth whitening</li></ul>
+        </section>
+        <address>12 Healthcare Street, Dubai Healthcare City</address>
       </body></html>`;
 
     const audit = detectHtmlSignals(html, "https://harbor.example/");
@@ -98,6 +109,48 @@ describe("deterministic HTML signal detection", () => {
     expect(audit.teamIndicators).toBe(true);
     expect(audit.servicesIndicators).toBe(true);
     expect(audit.locationIndicators).toBe(true);
+    expect(audit.signalEvidence?.booking?.[0]).toMatchObject({
+      exactText: "Book Appointment",
+      element: "a",
+      href: "https://harbor.example/book-appointment",
+      visible: true,
+      sourceUrl: "https://harbor.example/",
+    });
+    expect(audit.signalEvidence?.reviews?.[0]?.detectionRule).toMatch(
+      /review|testimonial/i,
+    );
+  });
+
+  it("does not turn generic keywords or Contact Us into strong business signals", () => {
+    const audit = detectHtmlSignals(
+      `<!doctype html><html><body>
+        <a href="/contact">Contact Us</a>
+        <a href="https://www.google.com">Google</a>
+        <p>Our team works hard. Services available in Dubai.</p>
+        <h2>Reviews</h2>
+      </body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.bookingFound).toBe(false);
+    expect(audit.googleMapsFound).toBe(false);
+    expect(audit.reviewsIndicators).toBe(false);
+    expect(audit.teamIndicators).toBe(false);
+    expect(audit.servicesIndicators).toBe(false);
+    expect(audit.locationIndicators).toBe(false);
+    expect(audit.signalEvidence).toEqual({});
+  });
+
+  it("preserves hidden state in structured evidence without counting hidden controls", () => {
+    const audit = detectHtmlSignals(
+      `<html><body>
+        <a hidden href="https://wa.me/971500000000">WhatsApp</a>
+        <a href="tel:+971501234567">+971 50 123 4567</a>
+      </body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.whatsappFound).toBe(false);
+    expect(audit.phoneFound).toBe(true);
+    expect(audit.signalEvidence?.phone?.[0]?.visible).toBe(true);
   });
 });
 
