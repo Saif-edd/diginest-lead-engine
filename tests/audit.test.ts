@@ -182,6 +182,14 @@ describe("deterministic HTML signal detection", () => {
     });
   });
 
+  it("does not treat a doctor-named service article as a team profile", () => {
+    const audit = detectHtmlSignals(
+      `<html><body><a href="/services/dr-titus-peters/"><h3>Dr Titus Peters - Complete Dental Care</h3></a></body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.teamIndicators).toBe(false);
+  });
+
   it("detects abbreviated and directions-linked business addresses", () => {
     const footerAudit = detectHtmlSignals(
       `<html><body><footer><ul><li>Location: 1302 Al Ansari Exchange Bldg., Khalifa Street, Abu Dhabi</li></ul></footer></body></html>`,

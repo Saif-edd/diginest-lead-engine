@@ -255,6 +255,18 @@ function teamEvidence(document: Document, baseUrl: string) {
       }
       return false;
     })();
+    const hasServiceLinkContext = (() => {
+      let current: Element | null = element;
+      for (let depth = 0; current && depth < 4; depth += 1, current = current.parentElement) {
+        if (current.tagName.toLowerCase() !== "a") continue;
+        try {
+          if (/(?:^|[/_-])(?:services?|treatments?)(?:[/_?#-]|$)/i.test(new URL(current.getAttribute("href") ?? "", baseUrl).pathname)) return true;
+        } catch {
+          /* malformed links are not profile context */
+        }
+      }
+      return false;
+    })();
     const parentText = cleanText(element.parentElement?.textContent);
     const headingSupport =
       namedProviderOrCredential.test(parentText) ||
@@ -272,7 +284,7 @@ function teamEvidence(document: Document, baseUrl: string) {
         (elements(element, "h2,h3,h4").some((heading) => elementHasMeaningfulText(heading, 8)) &&
           elements(element, "img[alt]").some((image) => cleanText(image.getAttribute("alt")).length >= 8))) &&
       text.length >= 18;
-    const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12 && (isHeading || hasProfileContext);
+    const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12 && !hasServiceLinkContext && (isHeading || hasProfileContext);
     if (headingMatch || relevantLink || profile || namedProvider) {
       const providerElement = elements(element, "h2,h3,h4,h5,h6,p,li,a,[class*='profile'],[class*='doctor'],[class*='team']").find(
         (candidate) => namedProviderOrCredential.test(cleanText(candidate.textContent)),
