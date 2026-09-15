@@ -133,7 +133,7 @@ export function calculateLeadScore(
   const rating = ratingScore(lead.rating);
   const reviewVolume = reviewVolumeScore(lead.totalRatings);
   const commercialProfile = lead.hasWebsite
-    ? 4
+    ? lead.audit.qualitativeResult?.commercialProfileScore ?? 4
     : (lead.noWebsiteOpportunity?.commercialPotential ?? 0);
   const businessStrength =
     clamp(categoryContext, 5) +
@@ -159,8 +159,12 @@ export function calculateLeadScore(
     reachability +
     previewPotential;
   const pendingComponents = [
-    "Preview potential (unreviewed)",
-    "Commercial profile (unreviewed)",
+    ...(!lead.hasWebsite || !lead.audit.qualitativeResult?.previewPotential.reviewed
+      ? ["Preview potential (unreviewed)"]
+      : []),
+    ...(!lead.hasWebsite || lead.audit.qualitativeResult?.commercialProfileScore == null
+      ? ["Commercial profile (unreviewed)"]
+      : []),
     ...(lead.hasWebsite
       ? [
         ...(!opportunityResult.complete ? ["Website audit evidence"] : []),
@@ -197,7 +201,11 @@ export function automaticQualificationFor(
     return "PENDING WEBSITE AUDIT";
   if (lead.hasWebsite && lead.audit.qualitativeAuditStatus !== "COMPLETE")
     return "PENDING QUALITATIVE AUDIT";
-  if (lead.hasWebsite && lead.score.opportunityConfirmed && lead.score.total >= 50)
+  if (
+    lead.hasWebsite &&
+    lead.audit.qualitativeResult?.qualificationDecision === "QUALIFY" &&
+    lead.score.opportunityConfirmed
+  )
     return "QUALIFIED";
   if (lead.score.opportunityConfirmed && lead.score.total >= 50 && lead.score.isFinal)
     return "QUALIFIED";

@@ -40,6 +40,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { WebsiteAudit } from "@/types/audit";
 import { transitionAuditStatus } from "@/lib/audit/state";
+import { qualitativeStatusFor, transitionQualitativeStatus } from "@/lib/qualitative/state";
+import { applyQualitativeResultToLead } from "@/lib/qualitative/apply";
+import { qualitativeIdempotencyKey } from "@/lib/qualitative/idempotency";
+import type { QualitativeResult } from "@/types/qualitative";
 import { deduplicateLeads, type DedupeReasonCounts } from "@/lib/dedupe";
 import { parseCsv } from "@/lib/import/csv";
 import { normalizeRows } from "@/lib/normalization";
@@ -155,7 +159,8 @@ function statusTone(value: string) {
     value === "CONTACTED" ||
     value === "CALL BOOKED" ||
     value === "PREVIEW READY" ||
-    value === "AUDITING"
+    value === "AUDITING" ||
+    value === "ANALYZING"
   )
     return "bg-cyan-50 text-cyan-700 border-cyan-100";
   if (value === "FAILED" || value === "BLOCKED")
@@ -1333,13 +1338,19 @@ function WebsiteAuditView({
   onOpenLead,
   onAuditSelected,
   onAuditNext,
+  onAnalyzeSelected,
+  onAnalyzeNext,
   auditingIds,
+  analyzingIds,
 }: {
   leads: Lead[];
   onOpenLead: (lead: Lead) => void;
   onAuditSelected: (ids: string[]) => Promise<void>;
   onAuditNext: (count: number) => Promise<void>;
+  onAnalyzeSelected: (ids: string[]) => Promise<void>;
+  onAnalyzeNext: (count: number) => Promise<void>;
   auditingIds: string[];
+  analyzingIds: string[];
 }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -1355,6 +1366,7 @@ function WebsiteAuditView({
     "FAILED",
     "BLOCKED",
   ];
+  const qualitativeStatuses = ["PENDING", "ANALYZING", "COMPLETE", "FAILED"] as const;
   const websiteLeads = leads.filter((lead) => lead.hasWebsite && lead.website);
   const filtered = websiteLeads.filter((lead) => {
     const haystack =
@@ -1364,13 +1376,20 @@ function WebsiteAuditView({
       (!status || (lead.audit.objectiveAuditStatus ?? lead.audit.status) === status)
     );
   });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const [qualitativeStatus, setQualitativeStatus] = useState("");
+  const qualitativeFiltered = filtered.filter((lead) => (
+    !qualitativeStatus || qualitativeStatusFor(lead.audit) === qualitativeStatus
+  ));
+  const totalPages = Math.max(1, Math.ceil(qualitativeFiltered.length / pageSize));
+  const visible = qualitativeFiltered.slice((page - 1) * pageSize, page * pageSize);
   const allVisibleSelected =
     visible.length > 0 &&
     visible.every((lead) => selected.includes(lead.leadId));
   const eligibleCount = websiteLeads.filter((lead) =>
     ["PENDING", "FAILED", "BLOCKED"].includes(lead.audit.objectiveAuditStatus ?? lead.audit.status),
+  ).length;
+  const qualitativeEligibleCount = websiteLeads.filter((lead) =>
+    ["PENDING", "FAILED"].includes(qualitativeStatusFor(lead.audit)),
   ).length;
   const requestedBatch = Math.min(50, Math.max(1, Number(batchSize) || 20));
 
@@ -1426,10 +1445,24 @@ function WebsiteAuditView({
           </button>
           <button
             onClick={() => void onAuditSelected(selected)}
-            disabled={auditingIds.length > 0 || selected.length === 0}
+            disabled={auditingIds.length > 0 || analyzingIds.length > 0 || selected.length === 0}
             className="flex items-center gap-2 rounded-lg bg-[#00bce3] px-3.5 py-2.5 text-xs font-bold text-[#06273a] transition hover:bg-[#00d4ff] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Check size={14} /> Audit selected ({selected.length})
+          </button>
+          <button
+            onClick={() => void onAnalyzeNext(requestedBatch)}
+            disabled={auditingIds.length > 0 || analyzingIds.length > 0 || qualitativeEligibleCount === 0}
+            className="flex items-center gap-2 rounded-lg border border-[#bfeaf2] bg-white px-3.5 py-2.5 text-xs font-bold text-[#1684a0] transition hover:bg-[#f4fdff] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles size={14} /> Analyze next {requestedBatch}
+          </button>
+          <button
+            onClick={() => void onAnalyzeSelected(selected)}
+            disabled={auditingIds.length > 0 || analyzingIds.length > 0 || selected.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-[#bfeaf2] bg-[#f4fdff] px-3.5 py-2.5 text-xs font-bold text-[#176b7d] transition hover:bg-[#e9fbff] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles size={14} /> Analyze selected ({selected.length})
           </button>
         </div>
       </div>
@@ -1445,6 +1478,10 @@ function WebsiteAuditView({
           audit or retry
         </span>
         <span className="text-[#c2d6dc]">·</span>
+        <span>
+          <strong className="text-[#176b7d]">{qualitativeEligibleCount}</strong> ready for qualitative analysis
+        </span>
+        <span className="text-[#c2d6dc]">Â·</span>
         <span>Default batch is 20; maximum is 50.</span>
       </div>
       <div className="rounded-xl border border-[#e5eaf0] bg-white p-3 shadow-[0_2px_8px_rgba(15,35,58,.025)]">
@@ -1479,8 +1516,23 @@ function WebsiteAuditView({
               </option>
             ))}
           </FilterSelect>
+          <FilterSelect
+            label="qualitative status"
+            value={qualitativeStatus}
+            onChange={(value) => {
+              setQualitativeStatus(value);
+              setPage(1);
+            }}
+            className="w-[190px]"
+          >
+            {qualitativeStatuses.map((item) => (
+              <option key={item} value={item}>
+                {item === "PENDING" ? "PENDING QUALITATIVE AUDIT" : item}
+              </option>
+            ))}
+          </FilterSelect>
           <span className="flex items-center px-1 text-[11px] text-[#8a96a5]">
-            {filtered.length} of {websiteLeads.length}
+            {qualitativeFiltered.length} of {websiteLeads.length}
           </span>
           <label className="flex items-center gap-1.5 text-[10px] font-semibold text-[#8a96a5]">
             Rows
@@ -1508,6 +1560,7 @@ function WebsiteAuditView({
                   "Business",
                   "Website",
                   "Audit Status",
+                  "Qualitative",
                   "HTTP",
                   "HTTPS",
                   "Phone",
@@ -1589,6 +1642,9 @@ function WebsiteAuditView({
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusPill value={qualitativeStatusFor(audit)} compact />
                     </td>
                     <td className="px-3 py-3 text-xs font-semibold text-[#526275]">
                       {audit.httpStatus ?? "—"}
@@ -1844,10 +1900,14 @@ function LeadDrawer({
   lead,
   onClose,
   onUpdateLead,
+  onAnalyzeLead,
+  qualitativeRunning,
 }: {
   lead: Lead;
   onClose: () => void;
   onUpdateLead: (id: string, patch: Partial<Lead>) => void;
+  onAnalyzeLead: (id: string) => Promise<void>;
+  qualitativeRunning: boolean;
 }) {
   const decision = (value: ManualDecision) =>
     onUpdateLead(lead.leadId, { manualDecision: value });
@@ -2065,6 +2125,13 @@ function LeadDrawer({
               )}
           </div>
           {lead.hasWebsite && <AuditEvidence audit={lead.audit} />}
+          {lead.hasWebsite && (
+            <QualitativeAnalysis
+              lead={lead}
+              onAnalyze={() => onAnalyzeLead(lead.leadId)}
+              running={qualitativeRunning}
+            />
+          )}
           <div className="border-b border-[#eef1f4] px-5 py-5">
             <p className="text-[10px] font-bold uppercase tracking-[.11em] text-[#8793a4]">
               Preview recommendation
@@ -2239,6 +2306,135 @@ function EvidenceSignal({
   );
 }
 
+const qualitativeDimensionLabels: Record<string, string> = {
+  mobileResponsive: "Mobile / Responsive",
+  heroMessageClarity: "Hero / Message Clarity",
+  ctaContactBooking: "CTA / Contact / Booking",
+  visualTrustDesign: "Visual Trust / Design",
+  servicesNavigation: "Services / Navigation",
+  speedPerformance: "Speed / Performance",
+  reviewsTeamTrust: "Reviews / Team / Trust",
+  localSeoTechnical: "Local SEO / Technical",
+};
+
+function QualitativeAnalysis({
+  lead,
+  onAnalyze,
+  running,
+}: {
+  lead: Lead;
+  onAnalyze: () => Promise<void>;
+  running: boolean;
+}) {
+  const audit = lead.audit;
+  const status = qualitativeStatusFor(audit);
+  const result = audit.qualitativeResult;
+  const canAnalyze = audit.objectiveAuditStatus === "COMPLETE" && !running;
+  return (
+    <div className="border-b border-[#eef1f4] px-5 py-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[.11em] text-[#8793a4]">
+            Qualitative AI analysis
+          </p>
+          <p className="mt-1 text-[11px] text-[#a0aab6]">
+            Evidence-bound review of the completed objective audit.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusPill value={status} compact />
+          {canAnalyze && (
+            <button
+              onClick={() => void onAnalyze()}
+              className="rounded-md border border-[#bfeaf2] bg-[#f4fdff] px-2 py-1.5 text-[10px] font-bold text-[#1684a0] hover:bg-[#e9fbff]"
+            >
+              {result ? "Re-analyze" : "Analyze"}
+            </button>
+          )}
+        </div>
+      </div>
+      {audit.qualitativeFailureReason && (
+        <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50 p-3 text-[11px] text-rose-700">
+          <span className="font-bold">{audit.qualitativeFailureReason}:</span>{" "}
+          {audit.qualitativeFailureMessage ?? "Qualitative analysis failed."}
+        </div>
+      )}
+      {!result && !audit.qualitativeFailureReason && (
+        <p className="mt-3 text-xs text-[#8a96a5]">
+          {status === "NOT_READY"
+            ? "Complete the objective audit before running qualitative analysis."
+            : "No qualitative result has been stored yet."}
+        </p>
+      )}
+      {result && (
+        <>
+          <div className="mt-4 flex items-end justify-between rounded-lg border border-[#d8f1f5] bg-[#f4fdff] p-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-[#718096]">Website opportunity</p>
+              <p className="mt-1 text-2xl font-bold text-[#176b7d]">{result.websiteOpportunityScore}/40</p>
+            </div>
+            <span className={cn("rounded-full px-2 py-1 text-[10px] font-bold", result.opportunityGate.passes ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500")}>
+              Gate {result.opportunityGate.passes ? "passes" : "does not pass"}
+            </span>
+          </div>
+          <div className="mt-3 rounded-lg border border-[#eef1f4] bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-[#8793a4]">Main problem</p>
+              <StatusPill value={result.mainProblemSeverity} compact />
+            </div>
+            <p className="mt-2 text-sm font-semibold leading-5 text-[#27364b]">{result.mainProblem}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-[#6f7e8f]">{result.qualificationReason}</p>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {Object.entries(result.dimensions).map(([key, dimension]) => (
+              <div key={key} className="rounded-lg border border-[#eef1f4] bg-[#fbfcfd] p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-[#526275]">{qualitativeDimensionLabels[key] ?? key}</span>
+                  <span className="text-[10px] font-bold text-[#176b7d]">{dimension.score}/{dimension.maxScore}</span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <StatusPill value={dimension.severity} compact />
+                  <span className="text-[9px] font-semibold uppercase text-[#9aa6b4]">{dimension.confidence} confidence</span>
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-[#6f7e8f]">{dimension.reason}</p>
+                {!!dimension.evidenceUsed.length && (
+                  <p className="mt-1 text-[9px] leading-4 text-[#9aa6b4]">
+                    Evidence: {dimension.evidenceUsed.map((item) => `${item.source}.${item.field}`).join(", ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          {!!result.secondaryProblems.length && (
+            <div className="mt-4">
+              <p className="text-[10px] font-bold uppercase tracking-[.08em] text-[#8793a4]">Secondary problems</p>
+              <ul className="mt-2 space-y-1">
+                {result.secondaryProblems.map((problem) => (
+                  <li key={problem.title} className="text-[11px] leading-4 text-[#6f7e8f]">
+                    <span className="font-semibold text-[#526275]">{problem.title}</span> ({problem.severity}) — {problem.evidence}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <InfoItem icon={Sparkles} label="Qualification" value={result.qualificationDecision} />
+            <InfoItem icon={Zap} label="Outreach angle" value={result.outreachAngle} />
+            <InfoItem icon={Sparkles} label="Preview" value={`${result.recommendedPreviewDepth}: ${result.recommendedPreviewFocus}`} />
+            <InfoItem icon={FileText} label="Recommended CTA" value={result.recommendedCTA} />
+          </div>
+          <div className="mt-3 rounded-lg border border-[#eef1f4] bg-[#fbfcfd] p-3 text-[11px] leading-relaxed text-[#6f7e8f]">
+            <span className="font-bold text-[#526275]">Hero angle: </span>{result.recommendedHeroAngle}
+            <br />
+            <span className="font-bold text-[#526275]">Sections: </span>{result.recommendedSections.join(" · ") || "None"}
+          </div>
+          <p className="mt-2 text-[9px] text-[#9aa6b4]">Model {result.modelVersion} · analyzed {new Date(result.analyzedAt).toLocaleString()}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
   const publicScreenshot = audit.screenshotPath?.startsWith(
     "/audit-screenshots/",
@@ -2308,8 +2504,7 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
             Objective audit evidence
           </p>
           <p className="mt-1 text-[11px] text-[#a0aab6]">
-            Homepage signals only; no qualitative scoring is inferred in Sprint
-            2A.
+            Homepage signals are kept separate from the qualitative analysis below.
           </p>
         </div>
         {screenshotHref && (publicScreenshot || audit.screenshotUrl) && (
@@ -2830,6 +3025,7 @@ export function LeadEngine() {
   const [showImport, setShowImport] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [auditRunningIds, setAuditRunningIds] = useState<string[]>([]);
+  const [qualitativeRunningIds, setQualitativeRunningIds] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
 
@@ -3008,6 +3204,81 @@ export function LeadEngine() {
       .map((lead) => lead.leadId);
     await auditSelected(nextIds);
   }
+
+  function applyQualitativeAnalysisResult(id: string, result: QualitativeResult) {
+    setLeads((current) =>
+      current.map((lead) => {
+        if (lead.leadId !== id) return lead;
+        const next = applyQualitativeResultToLead(lead, result, lead.audit.qualitativeRetryCount ?? 1);
+        setSelectedLead((currentSelected) => currentSelected?.leadId === id ? next : currentSelected);
+        return next;
+      }),
+    );
+  }
+
+  async function analyzeLead(id: string) {
+    const lead = leads.find((item) => item.leadId === id);
+    if (!lead?.hasWebsite || !lead.website || lead.audit.objectiveAuditStatus !== "COMPLETE") return;
+    if (!(await ensureAdminSession())) return;
+    const retryCount = (lead.audit.qualitativeRetryCount ?? 0) + 1;
+    const idempotencyKey = qualitativeIdempotencyKey(lead, retryCount);
+    try {
+      const currentStatus = qualitativeStatusFor(lead.audit);
+      const pending = currentStatus === "COMPLETE" ? transitionQualitativeStatus(lead.audit, "PENDING") : lead.audit;
+      const startedAt = new Date().toISOString();
+      const analyzing = transitionQualitativeStatus({
+        ...pending,
+        qualitativeRetryCount: retryCount,
+        qualitativeStartedAt: startedAt,
+        qualitativeHeartbeatAt: startedAt,
+      }, "ANALYZING");
+      setLeads((current) => current.map((item) => item.leadId === id ? { ...item, audit: analyzing } : item));
+      setSelectedLead((current) => current?.leadId === id ? { ...current, audit: analyzing } : current);
+      setQualitativeRunningIds((current) => [...new Set([...current, id])]);
+      const response = await fetch("/api/qualitative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: id, retryCount, idempotencyKey }),
+      });
+      const payload = await response.json() as { result?: QualitativeResult; audit?: WebsiteAudit; error?: string };
+      if (payload.result) applyQualitativeAnalysisResult(id, payload.result);
+      else if (payload.audit) {
+        setLeads((current) => current.map((item) => item.leadId === id ? { ...item, audit: payload.audit! } : item));
+        setSelectedLead((current) => current?.leadId === id ? { ...current, audit: payload.audit! } : current);
+      }
+      if (!response.ok) throw new Error(payload.error ?? "Qualitative analysis failed");
+    } catch (error) {
+      const timestamp = new Date().toISOString();
+      const failedLeadAudit = (item: Lead): WebsiteAudit => ({
+        ...item.audit,
+        qualitativeAuditStatus: "FAILED",
+        qualitativeCompletedAt: timestamp,
+        qualitativeHeartbeatAt: timestamp,
+        qualitativeFailureReason: "PROVIDER_ERROR",
+        qualitativeFailureMessage: error instanceof Error ? error.message : "Qualitative analysis failed",
+      });
+      setLeads((current) => current.map((item) => item.leadId === id ? {
+        ...item,
+        audit: failedLeadAudit(item),
+      } : item));
+      setSelectedLead((current) => current?.leadId === id ? { ...current, audit: failedLeadAudit(current) } : current);
+    } finally {
+      setQualitativeRunningIds((current) => current.filter((item) => item !== id));
+    }
+  }
+
+  async function analyzeSelected(ids: string[]) {
+    for (const id of ids) await analyzeLead(id);
+  }
+
+  async function analyzeNext(count: number) {
+    const nextIds = leads.filter((lead) =>
+      lead.hasWebsite && lead.website && lead.audit.objectiveAuditStatus === "COMPLETE" &&
+      ["PENDING", "FAILED"].includes(qualitativeStatusFor(lead.audit)),
+    ).slice(0, count).map((lead) => lead.leadId);
+    await analyzeSelected(nextIds);
+  }
+
   function selectView(view: ViewName) {
     setActiveView(view);
     setMobileNavOpen(false);
@@ -3185,7 +3456,10 @@ export function LeadEngine() {
               onOpenLead={setSelectedLead}
               onAuditSelected={auditSelected}
               onAuditNext={auditNext}
+              onAnalyzeSelected={analyzeSelected}
+              onAnalyzeNext={analyzeNext}
               auditingIds={auditRunningIds}
+              analyzingIds={qualitativeRunningIds}
             />
           )}
           {activeView === "Qualified" && (
@@ -3211,6 +3485,8 @@ export function LeadEngine() {
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
           onUpdateLead={updateLead}
+          onAnalyzeLead={analyzeLead}
+          qualitativeRunning={qualitativeRunningIds.includes(selectedLead.leadId)}
         />
       )}
       {showImport && (

@@ -2,6 +2,7 @@ import { createClient, type Client } from "@libsql/client";
 import type { Lead, WorkspaceMode } from "@/types/lead";
 import type { ImportReport } from "@/types/import";
 import type { WebsiteAudit } from "@/types/audit";
+import type { QualitativeResult } from "@/types/qualitative";
 import { leadIdentity } from "@/lib/normalization";
 import { automaticQualificationFor, calculateLeadScore, effectiveQualificationFor } from "@/lib/scoring";
 import { recoverStaleAudit } from "@/lib/audit/state";
@@ -26,8 +27,10 @@ async function ensureSchema() {
       { sql: `CREATE TABLE IF NOT EXISTS imports (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_mode TEXT NOT NULL, source_file TEXT, report_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
       { sql: `CREATE TABLE IF NOT EXISTS audit_jobs (lead_id TEXT PRIMARY KEY, objective_status TEXT NOT NULL, qualitative_status TEXT NOT NULL, started_at TEXT, completed_at TEXT, heartbeat_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, audit_json TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
       { sql: `CREATE TABLE IF NOT EXISTS audit_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, audit_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
+      { sql: `CREATE TABLE IF NOT EXISTS qualitative_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, result_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
       { sql: `CREATE INDEX IF NOT EXISTS leads_mode_idx ON leads(workspace_mode)`, args: [] },
       { sql: `CREATE INDEX IF NOT EXISTS audit_results_lead_idx ON audit_results(lead_id)`, args: [] },
+      { sql: `CREATE INDEX IF NOT EXISTS qualitative_results_lead_idx ON qualitative_results(lead_id)`, args: [] },
     ]).then(() => undefined);
   }
   await schemaPromise;
@@ -63,6 +66,7 @@ export async function replaceProductionWorkspace(leads: Lead[], report: ImportRe
   const db = database();
   const statements = [
     { sql: "DELETE FROM audit_results", args: [] },
+    { sql: "DELETE FROM qualitative_results", args: [] },
     { sql: "DELETE FROM audit_jobs", args: [] },
     { sql: "DELETE FROM leads WHERE workspace_mode = 'PRODUCTION'", args: [] },
     ...leads.map((lead) => ({ sql: "INSERT INTO leads (lead_id, workspace_mode, lead_json, created_at, updated_at) VALUES (?, 'PRODUCTION', ?, ?, ?)", args: [lead.leadId, JSON.stringify(lead), timestamp, timestamp] })),
@@ -89,6 +93,7 @@ export async function clearProductionWorkspace() {
   await ensureSchema();
   await database().batch([
     { sql: "DELETE FROM audit_results", args: [] },
+    { sql: "DELETE FROM qualitative_results", args: [] },
     { sql: "DELETE FROM audit_jobs", args: [] },
     { sql: "DELETE FROM leads WHERE workspace_mode = 'PRODUCTION'", args: [] },
   ], "write");
@@ -98,14 +103,18 @@ export async function clearProductionWorkspace() {
 export async function saveLead(lead: Lead) {
   await ensureSchema();
   const timestamp = now();
-  await database().execute({ sql: "INSERT INTO leads (lead_id, workspace_mode, lead_json, created_at, updated_at) VALUES (?, 'PRODUCTION', ?, ?, ?) ON CONFLICT(lead_id) DO UPDATE SET lead_json = excluded.lead_json, updated_at = excluded.updated_at", args: [lead.leadId, JSON.stringify(migrateLead(lead)), timestamp, timestamp] });
+  const migrated = migrateLead(lead);
+  await database().batch([
+    { sql: "INSERT INTO leads (lead_id, workspace_mode, lead_json, created_at, updated_at) VALUES (?, 'PRODUCTION', ?, ?, ?) ON CONFLICT(lead_id) DO UPDATE SET lead_json = excluded.lead_json, updated_at = excluded.updated_at", args: [lead.leadId, JSON.stringify(migrated), timestamp, timestamp] },
+    { sql: "INSERT INTO audit_jobs (lead_id, objective_status, qualitative_status, started_at, completed_at, heartbeat_at, retry_count, audit_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(lead_id) DO UPDATE SET objective_status = excluded.objective_status, qualitative_status = excluded.qualitative_status, started_at = excluded.started_at, completed_at = excluded.completed_at, heartbeat_at = excluded.heartbeat_at, retry_count = excluded.retry_count, audit_json = excluded.audit_json, updated_at = excluded.updated_at", args: [migrated.leadId, migrated.audit.objectiveAuditStatus ?? migrated.audit.status, migrated.audit.qualitativeAuditStatus ?? "NOT_READY", migrated.audit.startedAt ?? null, migrated.audit.completedAt ?? null, migrated.audit.heartbeatAt ?? null, migrated.audit.retryCount ?? 0, JSON.stringify(migrated.audit), timestamp] },
+  ], "write");
 }
 
 export async function findProductionLead(leadId: string) {
   await ensureSchema();
   const result = await database().execute({ sql: "SELECT lead_json FROM leads WHERE lead_id = ? AND workspace_mode = 'PRODUCTION'", args: [leadId] });
   const row = result.rows[0];
-  return row ? JSON.parse(String(row.lead_json)) as Lead : undefined;
+  return row ? migrateLead(JSON.parse(String(row.lead_json)) as Lead) : undefined;
 }
 
 export async function persistAuditResult(lead: Lead, audit: WebsiteAudit, idempotencyKey: string) {
@@ -126,4 +135,30 @@ export async function getAuditResult(idempotencyKey: string) {
   await ensureSchema();
   const result = await database().execute({ sql: "SELECT audit_json FROM audit_results WHERE idempotency_key = ?", args: [idempotencyKey] });
   return result.rows[0] ? JSON.parse(String(result.rows[0].audit_json)) as WebsiteAudit : undefined;
+}
+
+export async function persistQualitativeResult(
+  lead: Lead,
+  audit: WebsiteAudit,
+  result: QualitativeResult,
+  idempotencyKey: string,
+) {
+  await ensureSchema();
+  const db = database();
+  const existing = await db.execute({ sql: "SELECT result_json FROM qualitative_results WHERE idempotency_key = ?", args: [idempotencyKey] });
+  if (existing.rows[0]) return JSON.parse(String(existing.rows[0].result_json)) as QualitativeResult;
+  const timestamp = now();
+  await db.batch([
+    { sql: "INSERT OR IGNORE INTO qualitative_results (lead_id, idempotency_key, result_json, created_at) VALUES (?, ?, ?, ?)", args: [lead.leadId, idempotencyKey, JSON.stringify(result), timestamp] },
+    { sql: "UPDATE audit_jobs SET qualitative_status = ?, audit_json = ?, updated_at = ? WHERE lead_id = ?", args: [audit.qualitativeAuditStatus ?? "COMPLETE", JSON.stringify(audit), timestamp, lead.leadId] },
+    { sql: "UPDATE leads SET lead_json = ?, updated_at = ? WHERE lead_id = ? AND workspace_mode = 'PRODUCTION'", args: [JSON.stringify(migrateLead({ ...lead, audit })), timestamp, lead.leadId] },
+  ], "write");
+  const stored = await db.execute({ sql: "SELECT result_json FROM qualitative_results WHERE idempotency_key = ?", args: [idempotencyKey] });
+  return stored.rows[0] ? JSON.parse(String(stored.rows[0].result_json)) as QualitativeResult : result;
+}
+
+export async function getQualitativeResult(idempotencyKey: string) {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT result_json FROM qualitative_results WHERE idempotency_key = ?", args: [idempotencyKey] });
+  return result.rows[0] ? JSON.parse(String(result.rows[0].result_json)) as QualitativeResult : undefined;
 }

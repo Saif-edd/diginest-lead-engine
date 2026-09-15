@@ -28,6 +28,15 @@ export const qualitativeAuditStatuses = [
 ] as const;
 export type QualitativeAuditStatus = (typeof qualitativeAuditStatuses)[number];
 
+export const qualitativeFailureReasons = [
+  "INVALID_AI_OUTPUT",
+  "TIMEOUT",
+  "PROVIDER_ERROR",
+  "NOT_CONFIGURED",
+  "LOW_CONFIDENCE",
+] as const;
+export type QualitativeFailureReason = (typeof qualitativeFailureReasons)[number];
+
 export const auditFailureReasons = [
   "TIMEOUT",
   "DNS_ERROR",
@@ -139,4 +148,13 @@ export interface WebsiteAudit {
   failureMessage?: string;
   retryCount?: number;
   lastAttemptAt?: string;
+  qualitativeResult?: import("./qualitative").QualitativeResult;
+  qualitativeModel?: string;
+  qualitativeAnalyzedAt?: string;
+  qualitativeStartedAt?: string;
+  qualitativeCompletedAt?: string;
+  qualitativeHeartbeatAt?: string;
+  qualitativeRetryCount?: number;
+  qualitativeFailureReason?: QualitativeFailureReason;
+  qualitativeFailureMessage?: string;
 }
