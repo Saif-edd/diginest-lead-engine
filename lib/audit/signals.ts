@@ -229,7 +229,7 @@ function teamEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
   const teamWords = /\b(?:our\s+team|meet\s+(?:the\s+)?team|our\s+doctors?|meet\s+(?:our\s+)?doctors?|dentists?|therapists?|staff|m[eé]decins?|[eé]quipe)\b/i;
   const profileClass = /team|doctor|dentist|therapist|staff|profile|provider/i;
-  const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/;
+  const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/i;
   const relevantTeamLinkText = /^(?:our|meet(?:\s+the)?|the)?\s*(?:team|doctors?|dentists?|therapists?|staff|providers?)$/i;
   const relevantTeamPathSegment = /^(?:team|doctors?|dentists?|staff|therapists?|providers?|our[-_](?:team|doctors?|dentists?)|meet[-_](?:the[-_])?team)$/i;
   const relevantTeamLinkPath = (href: string) => {

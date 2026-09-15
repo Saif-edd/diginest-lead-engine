@@ -166,6 +166,21 @@ describe("deterministic HTML signal detection", () => {
     });
   });
 
+  it("detects a capitalized Dr. provider name in a profile heading", () => {
+    const audit = detectHtmlSignals(
+      `<html><body><section class="doctor-profile"><h2>Dr. Hussien Tahoun</h2><p>Medical Director</p></section></body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.teamIndicators).toBe(true);
+    expect(audit.signalEvidence?.team?.find((item) => item.element === "h2")).toMatchObject({
+      exactText: "Dr. Hussien Tahoun",
+      element: "h2",
+      detectionRule: "staff/profile content with provider name or credential",
+      visible: true,
+      sourceUrl: "https://example.test/",
+    });
+  });
+
   it("preserves hidden state in structured evidence without counting hidden controls", () => {
     const audit = detectHtmlSignals(
       `<html><body>
