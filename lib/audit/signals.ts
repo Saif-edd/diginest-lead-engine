@@ -144,6 +144,7 @@ function reviewEvidence(document: Document, baseUrl: string) {
     document,
     "section,article,blockquote,h1,h2,h3,h4,h5,h6,[class*='review'],[id*='review'],[class*='testimonial'],[id*='testimonial'],li",
   )) {
+    if (/^(html|body|main|header|footer)$/i.test(element.tagName)) continue;
     if (!isVisible(element) || !elementHasMeaningfulText(element, 18)) continue;
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
@@ -197,6 +198,7 @@ function teamEvidence(document: Document, baseUrl: string) {
     document,
     "section,article,h1,h2,h3,h4,h5,h6,a,[class*='team'],[id*='team'],[class*='doctor'],[id*='doctor'],[class*='dentist'],[id*='dentist'],[class*='therapist'],[id*='therapist'],[class*='staff'],[id*='staff'],[class*='profile'],[id*='profile']",
   )) {
+    if (/^(html|body|main|header|footer)$/i.test(element.tagName)) continue;
     if (!isVisible(element) || !elementHasMeaningfulText(element, 12)) continue;
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
@@ -241,6 +243,7 @@ function servicesEvidence(document: Document, baseUrl: string) {
     document,
     "section,article,h1,h2,h3,h4,h5,h6,li,a,[class*='service'],[id*='service'],[class*='treatment'],[id*='treatment'],[class*='procedure'],[id*='procedure']",
   )) {
+    if (/^(html|body|main|header|footer)$/i.test(element.tagName)) continue;
     if (!isVisible(element) || !elementHasMeaningfulText(element, 18)) continue;
     const text = cleanText(element.textContent);
     const heading = /^h[1-6]$/i.test(element.tagName) && servicesHeading.test(text);
