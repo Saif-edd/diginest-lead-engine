@@ -147,6 +147,7 @@ describe("deterministic HTML signal detection", () => {
     const audit = detectHtmlSignals(
       `<html><body>
         <a href="/schedule-a-tour/"><span>Book a Visit</span></a>
+        <button>APPOINTMENT</button>
         <div class="joinchat" data-settings='{"telephone":"971504928480"}'>
           <div class="joinchat__button" role="button" aria-label="WhatsApp Contact"></div>
         </div>

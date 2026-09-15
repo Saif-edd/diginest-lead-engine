@@ -152,7 +152,7 @@ function whatsappWidgetEvidence(document: Document, baseUrl: string) {
 const phonePattern = /(?:\+?\d[\d\s().-]{6,}\d)/;
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const appointmentTextPattern =
-  /\b(?:book(?:\s+(?:an?|your))?\s+(?:appointment|visit)|book\s+now|schedule(?:\s+(?:an?|your))?\s+appointment|request(?:\s+(?:an?|your))?\s+appointment|make(?:\s+(?:an?|your))?\s+appointment|appointment\s+booking|reserve(?:\s+(?:an?|your))?\s+appointment|rendez[- ]vous|prendre\s+rendez[- ]vous)\b/i;
+  /\b(?:appointment|book(?:\s+(?:an?|your))?\s+(?:appointment|visit)|book\s+now|schedule(?:\s+(?:an?|your))?\s+appointment|request(?:\s+(?:an?|your))?\s+appointment|make(?:\s+(?:an?|your))?\s+appointment|appointment\s+booking|reserve(?:\s+(?:an?|your))?\s+appointment|rendez[- ]vous|prendre\s+rendez[- ]vous)\b/i;
 const appointmentPathPattern =
   /(?:^|[/_-])(book|booking|appointment|appointments|calendar)(?:[/_?#-]|$)/i;
 const bookingProviderPattern =
