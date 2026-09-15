@@ -5,6 +5,7 @@ import { findProductionLead, getAuditResult, persistAuditResult, saveLead } from
 import { checkRateLimit, isAuthorized } from "@/lib/security/auth";
 import { uploadAuditScreenshot } from "@/lib/storage/screenshots";
 import { transitionAuditStatus } from "@/lib/audit/state";
+import { AuditSsrfError, AuditUrlError, assertPublicAuditUrl } from "@/lib/audit/url";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,12 @@ export async function POST(request: Request) {
         { error: "leadId and requestedUrl are required" },
         { status: 400 },
       );
+    }
+    try {
+      await assertPublicAuditUrl(body.requestedUrl);
+    } catch (error) {
+      const status = error instanceof AuditSsrfError ? 403 : error instanceof AuditUrlError ? 400 : 400;
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid audit URL" }, { status });
     }
     const lead = await findProductionLead(body.leadId);
     if (!lead || !lead.hasWebsite) return NextResponse.json({ error: "Production lead not found or has no website" }, { status: 404 });
