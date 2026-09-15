@@ -13,11 +13,12 @@
     "calibrate:audit": "tsx scripts/calibrate-audit.ts"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^153.0.0",
     "@tailwindcss/postcss": "^4.1.13",
     "linkedom": "^0.18.13",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",
-    "playwright": "^1.63.0",
+    "playwright-core": "^1.63.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

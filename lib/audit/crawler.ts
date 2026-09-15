@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { chromium } from "playwright";
+import serverlessChromium from "@sparticuz/chromium";
+import { chromium } from "playwright-core";
 import type { AuditFailureReason, WebsiteAudit } from "../../types/audit";
 import { detectHtmlSignals } from "./signals";
 import { emptyWebsiteAudit } from "./record";
@@ -65,7 +66,7 @@ function failureAudit(
   };
 }
 
-async function dismissCookieBanner(page: import("playwright").Page) {
+async function dismissCookieBanner(page: import("playwright-core").Page) {
   const consent = page
     .getByRole("button", {
       name: /accept|agree|allow|got it|consent|accepter|j'accepte/i,
@@ -89,13 +90,20 @@ export async function crawlWebsite(
     );
   }
 
-  let browser: import("playwright").Browser | undefined;
+  let browser: import("playwright-core").Browser | undefined;
   try {
+    const isVercel = Boolean(process.env.VERCEL);
+    const configuredExecutable =
+      process.env.DIGINest_BROWSER_PATH || installedBrowserPath();
+    const executablePath =
+      configuredExecutable ||
+      (isVercel ? await serverlessChromium.executablePath() : undefined);
     browser = await chromium.launch({
       headless: true,
-      executablePath:
-        process.env.DIGINest_BROWSER_PATH || installedBrowserPath(),
-      args: ["--disable-dev-shm-usage", "--no-sandbox"],
+      executablePath,
+      args: isVercel
+        ? serverlessChromium.args
+        : ["--disable-dev-shm-usage", "--no-sandbox"],
     });
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
