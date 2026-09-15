@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 import type { AuditFailureReason, WebsiteAudit } from "../../types/audit";
 import { detectHtmlSignals } from "./signals";
 import { emptyWebsiteAudit } from "./record";
-import { AuditUrlError, normalizeAuditUrl } from "./url";
+import { AuditSsrfError, AuditUrlError, assertPublicAuditUrl } from "./url";
 
 export interface CrawlWebsiteInput {
   leadId: string;
@@ -31,6 +31,7 @@ export function classifyError(error: unknown): AuditFailureReason {
     /invalid.*url|unsupported.*url/i.test(message)
   )
     return "INVALID_URL";
+  if (error instanceof AuditSsrfError || /private|internal|ssrf/i.test(message)) return "BLOCKED";
   if (/timeout|timed out|exceeded/i.test(message)) return "TIMEOUT";
   if (/name_not_resolved|enotfound|dns|getaddrinfo/i.test(message))
     return "DNS_ERROR";
@@ -63,6 +64,7 @@ function failureAudit(
     failureMessage: message.slice(0, 500),
     retryCount: input.retryCount ?? 0,
     lastAttemptAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
   };
 }
 
@@ -81,7 +83,7 @@ export async function crawlWebsite(
   const startedAt = Date.now();
   let requestedUrl: string;
   try {
-    requestedUrl = normalizeAuditUrl(input.requestedUrl);
+    requestedUrl = await assertPublicAuditUrl(input.requestedUrl);
   } catch (error) {
     return failureAudit(
       input,
@@ -109,6 +111,15 @@ export async function crawlWebsite(
       viewport: { width: 1440, height: 900 },
     });
     const page = await context.newPage();
+    await page.route("**/*", async (route) => {
+      if (route.request().resourceType() !== "document") return route.continue();
+      try {
+        await assertPublicAuditUrl(route.request().url());
+        return route.continue();
+      } catch {
+        return route.abort("blockedbyclient");
+      }
+    });
     let redirectCount = 0;
     page.on("response", (response) => {
       if (
@@ -124,6 +135,7 @@ export async function crawlWebsite(
     });
     const httpStatus = response?.status();
     const finalUrl = page.url();
+    await assertPublicAuditUrl(finalUrl);
     if (httpStatus != null && httpStatus >= 400) {
       const reason: AuditFailureReason = [401, 403, 429].includes(httpStatus)
         ? "BLOCKED"
@@ -191,6 +203,9 @@ export async function crawlWebsite(
       auditTimestamp,
       retryCount: input.retryCount ?? 0,
       lastAttemptAt: auditTimestamp,
+      startedAt: new Date(startedAt).toISOString(),
+      completedAt: auditTimestamp,
+      heartbeatAt: auditTimestamp,
     };
   } catch (error) {
     const reason = classifyError(error);

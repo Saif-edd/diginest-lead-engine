@@ -16,6 +16,7 @@ function makeSampleLead(
   });
   return {
     ...input,
+    audit: { ...input.audit, simulated: true },
     score,
     automaticQualification,
     qualificationStatus: effectiveQualificationFor(

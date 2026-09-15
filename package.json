@@ -13,8 +13,10 @@
     "calibrate:audit": "tsx scripts/calibrate-audit.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@sparticuz/chromium": "^153.0.0",
     "@tailwindcss/postcss": "^4.1.13",
+    "@vercel/blob": "^2.8.0",
     "linkedom": "^0.18.13",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",

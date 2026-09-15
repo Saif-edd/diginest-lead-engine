@@ -4,7 +4,11 @@ export function emptyWebsiteAudit(
   status: AuditStatus = "PENDING",
   requestedUrl?: string,
 ): WebsiteAudit {
+  const objectiveAuditStatus = status === "NOT REQUIRED" ? "PENDING" : status;
   return {
+    objectiveAuditStatus,
+    qualitativeAuditStatus:
+      objectiveAuditStatus === "COMPLETE" ? "PENDING" : "NOT_READY",
     status,
     requestedUrl,
     h1: [],

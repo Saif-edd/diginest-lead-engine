@@ -9,6 +9,25 @@ export const auditStatuses = [
 ] as const;
 export type AuditStatus = (typeof auditStatuses)[number];
 
+export const objectiveAuditStatuses = [
+  "PENDING",
+  "QUEUED",
+  "AUDITING",
+  "COMPLETE",
+  "FAILED",
+  "BLOCKED",
+] as const;
+export type ObjectiveAuditStatus = (typeof objectiveAuditStatuses)[number];
+
+export const qualitativeAuditStatuses = [
+  "NOT_READY",
+  "PENDING",
+  "ANALYZING",
+  "COMPLETE",
+  "FAILED",
+] as const;
+export type QualitativeAuditStatus = (typeof qualitativeAuditStatuses)[number];
+
 export const auditFailureReasons = [
   "TIMEOUT",
   "DNS_ERROR",
@@ -17,6 +36,7 @@ export const auditFailureReasons = [
   "BLOCKED",
   "INVALID_URL",
   "BROWSER_ERROR",
+  "STALE",
 ] as const;
 export type AuditFailureReason = (typeof auditFailureReasons)[number];
 
@@ -27,7 +47,11 @@ export interface AuditPerformance {
 }
 
 export interface WebsiteAudit {
+  objectiveAuditStatus?: ObjectiveAuditStatus;
+  qualitativeAuditStatus?: QualitativeAuditStatus;
+  /** @deprecated Use objectiveAuditStatus. Retained for Sprint 1 migration. */
   status: AuditStatus;
+  simulated?: boolean;
   // Sprint 1 scoring fields remain optional until Sprint 2B qualitative calibration.
   mobileScore?: number;
   heroClarity?: number;
@@ -57,7 +81,12 @@ export interface WebsiteAudit {
   language?: string;
   performance?: AuditPerformance;
   screenshotPath?: string;
+  screenshotUrl?: string;
+  screenshotError?: string;
   auditTimestamp?: string;
+  startedAt?: string;
+  completedAt?: string;
+  heartbeatAt?: string;
   phoneFound?: boolean;
   phoneEvidence?: string[];
   whatsappFound?: boolean;

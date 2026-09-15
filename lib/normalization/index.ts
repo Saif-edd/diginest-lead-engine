@@ -4,6 +4,7 @@ import {
   effectiveQualificationFor,
 } from "../scoring";
 import type { Lead, LeadField, RawImportedData } from "../../types/lead";
+import { isValidEmail, isValidPhone, isValidSocial } from "../contact/validation";
 
 export type CsvRow = Record<string, string | null>;
 export type LeadIdentityReason =
@@ -144,9 +145,9 @@ export function normalizeRow(
         digitalGap: 5,
       };
   const reachability = {
-    hasPhone: Boolean(phone),
-    hasEmail: Boolean(email),
-    hasSocial: Boolean(socialUrl),
+    hasPhone: isValidPhone(phone),
+    hasEmail: isValidEmail(email),
+    hasSocial: isValidSocial(socialUrl),
   };
   const previewPotential = {
     realInformationAssets: 3,

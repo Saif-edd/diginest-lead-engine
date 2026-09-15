@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { crawlWebsite, classifyError } from "../lib/audit/crawler";
 import { detectHtmlSignals } from "../lib/audit/signals";
-import { canTransitionAudit, transitionAuditStatus } from "../lib/audit/state";
+import { canTransitionAudit, recoverStaleAudit, transitionAuditStatus } from "../lib/audit/state";
 import { emptyWebsiteAudit } from "../lib/audit/record";
-import { AuditUrlError, normalizeAuditUrl } from "../lib/audit/url";
+import { AuditSsrfError, AuditUrlError, assertPublicAuditUrl, normalizeAuditUrl } from "../lib/audit/url";
 
 describe("audit URL normalization", () => {
   it("adds HTTPS and preserves a valid path", () => {
@@ -37,6 +37,18 @@ describe("audit status transitions", () => {
     expect(() =>
       transitionAuditStatus(emptyWebsiteAudit("PENDING"), "COMPLETE"),
     ).toThrow(/Invalid audit transition/);
+  });
+
+  it("moves a completed objective audit to qualitative pending", () => {
+    const next = transitionAuditStatus(emptyWebsiteAudit("AUDITING"), "COMPLETE");
+    expect(next.objectiveAuditStatus).toBe("COMPLETE");
+    expect(next.qualitativeAuditStatus).toBe("PENDING");
+  });
+
+  it("recovers stale auditing jobs", () => {
+    const stale = recoverStaleAudit({ ...emptyWebsiteAudit("AUDITING"), startedAt: "2020-01-01T00:00:00.000Z" }, Date.parse("2020-01-01T00:20:00.000Z"));
+    expect(stale.objectiveAuditStatus).toBe("FAILED");
+    expect(stale.failureReason).toBe("STALE");
   });
 });
 
@@ -110,5 +122,10 @@ describe("audit failure handling", () => {
     expect(audit.status).toBe("FAILED");
     expect(audit.failureReason).toBe("INVALID_URL");
     expect(audit.pageReachable).toBe(false);
+  });
+
+  it("rejects localhost and private hosts before crawling", async () => {
+    await expect(assertPublicAuditUrl("http://localhost:3000")).rejects.toBeInstanceOf(AuditSsrfError);
+    await expect(assertPublicAuditUrl("http://127.0.0.1")).rejects.toBeInstanceOf(AuditSsrfError);
   });
 });

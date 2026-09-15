@@ -4,14 +4,12 @@ import {
   Activity,
   ArrowUpDown,
   BarChart3,
-  Bell,
   Building2,
   CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleHelp,
   ClipboardList,
   Clock3,
   Columns3,
@@ -58,6 +56,7 @@ import type {
   QualificationStatus,
   WorkspaceMode,
 } from "@/types/lead";
+import type { ImportMode, ImportReport } from "@/types/import";
 
 type ViewName =
   | "Overview"
@@ -122,7 +121,6 @@ const defaultColumns: Record<ColumnKey, boolean> = {
   audit: false,
   outreach: false,
 };
-const WORKSPACE_STORAGE_KEY = "diginest-lead-engine-workspace-v1";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -312,6 +310,8 @@ function OverviewView({
   onViewLeads: () => void;
   onOpenLead: (lead: Lead) => void;
 }) {
+  const today = new Date();
+  const greeting = today.getHours() < 12 ? "Good morning" : today.getHours() < 18 ? "Good afternoon" : "Good evening";
   const stats = useMemo(
     () => ({
       total: leads.length,
@@ -320,19 +320,16 @@ function OverviewView({
       qualified: leads.filter(
         (lead) => lead.qualificationStatus === "QUALIFIED",
       ).length,
-      pending: leads.filter(
+      pendingObjective: leads.filter(
         (lead) => lead.qualificationStatus === "PENDING WEBSITE AUDIT",
       ).length,
+      pendingQualitative: leads.filter((lead) => lead.qualificationStatus === "PENDING QUALITATIVE AUDIT").length,
       hold: leads.filter((lead) => lead.qualificationStatus === "HOLD").length,
       skip: leads.filter((lead) => lead.qualificationStatus === "SKIP").length,
-      p1: leads.filter(
-        (lead) =>
-          lead.score.priority === "P1 ULTRA" ||
-          lead.score.priority === "P1 PREMIUM",
-      ).length,
-      p2: leads.filter((lead) => lead.score.priority === "P2 STRONG").length,
-      p3: leads.filter((lead) => lead.score.priority === "P3 QUALIFIED").length,
-      p4: leads.filter((lead) => lead.score.priority === "P4 LOW").length,
+      p1: leads.filter((lead) => lead.score.isFinal && !["HOLD", "SKIP"].includes(lead.qualificationStatus) && ["P1 ULTRA", "P1 PREMIUM"].includes(lead.score.priority)).length,
+      p2: leads.filter((lead) => lead.score.isFinal && !["HOLD", "SKIP"].includes(lead.qualificationStatus) && lead.score.priority === "P2 STRONG").length,
+      p3: leads.filter((lead) => lead.score.isFinal && !["HOLD", "SKIP"].includes(lead.qualificationStatus) && lead.score.priority === "P3 QUALIFIED").length,
+      p4: leads.filter((lead) => lead.score.isFinal && !["HOLD", "SKIP"].includes(lead.qualificationStatus) && lead.score.priority === "P4 LOW").length,
       contacted: leads.filter((lead) =>
         ["CONTACTED", "REPLIED", "POSITIVE", "CALL BOOKED", "WON"].includes(
           lead.outreachStatus,
@@ -352,7 +349,8 @@ function OverviewView({
     .filter(
       (lead) =>
         lead.qualificationStatus === "QUALIFIED" ||
-        lead.qualificationStatus === "PENDING WEBSITE AUDIT",
+        lead.qualificationStatus === "PENDING WEBSITE AUDIT" ||
+        lead.qualificationStatus === "PENDING QUALITATIVE AUDIT",
     )
     .sort((a, b) => b.score.total - a.score.total)
     .slice(0, 5);
@@ -362,9 +360,12 @@ function OverviewView({
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-1 text-[11px] font-bold uppercase tracking-[.13em] text-[#00aaca]">
-            Monday, September 14, 2026
+            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
           </p>
           <h1 className="text-[27px] font-bold tracking-[-.045em] text-[#17243a]">
+            {greeting}, team <span className="text-[#00bce3]">✦</span>
+          </h1>
+          <h1 className="hidden text-[27px] font-bold tracking-[-.045em] text-[#17243a]">
             Good morning, team <span className="text-[#00bce3]">✦</span>
           </h1>
           <p className="mt-1 text-sm text-[#718096]">
@@ -403,7 +404,7 @@ function OverviewView({
         <MetricCard
           label="Qualified"
           value={stats.qualified}
-          detail={`${stats.pending} pending audit`}
+          detail={`${stats.pendingObjective} objective · ${stats.pendingQualitative} qualitative pending`}
           icon={ShieldCheck}
           tone="green"
         />
@@ -452,9 +453,10 @@ function OverviewView({
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <MiniMetric
               label="Pending audit"
-              value={stats.pending}
+              value={stats.pendingObjective}
               icon={Clock3}
             />
+            <MiniMetric label="Pending qualitative" value={stats.pendingQualitative} icon={Clock3} />
             <MiniMetric label="On hold" value={stats.hold} icon={Inbox} />
             <MiniMetric
               label="Skipped"
@@ -662,7 +664,7 @@ function LeadsView({
   const [visible, setVisible] = useState(defaultColumns);
   const [selected, setSelected] = useState<string[]>([]);
   const [showColumns, setShowColumns] = useState(false);
-  const pageSize = 6;
+  const [pageSize, setPageSize] = useState(25);
   const categories = useMemo(
     () => [...new Set(leads.map((lead) => lead.category))].sort(),
     [leads],
@@ -694,7 +696,7 @@ function LeadsView({
               : (lead.totalRatings ?? 0) < 100)) &&
         (!qualification || lead.qualificationStatus === qualification) &&
         (!priority || lead.score.priority === priority) &&
-        (!audit || lead.audit.status === audit) &&
+        (!audit || (lead.audit.objectiveAuditStatus ?? lead.audit.status) === audit) &&
         (!outreach || lead.outreachStatus === outreach) &&
         (!source || lead.sourceFile === source)
       );
@@ -879,6 +881,7 @@ function LeadsView({
                 "QUALIFIED",
                 "REVIEW",
                 "PENDING WEBSITE AUDIT",
+                "PENDING QUALITATIVE AUDIT",
                 "HOLD",
                 "SKIP",
               ].map((item) => (
@@ -1031,6 +1034,12 @@ function LeadsView({
             </span>{" "}
             of {leads.length} leads
           </span>
+          <label className="flex items-center gap-1.5 text-[10px] font-semibold text-[#8a96a5]">
+            Rows
+            <select aria-label="Leads page size" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="h-8 rounded-lg border border-[#e2e8ee] bg-white px-2 text-[11px] text-[#526275]">
+              {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
         </div>
       </div>
       {selected.length > 0 && (
@@ -1183,7 +1192,7 @@ function LeadsView({
                     />
                   </td>
                   <td className={cn("px-3 py-3", !visible.audit && "hidden")}>
-                    <StatusPill value={lead.audit.status} compact />
+                    <StatusPill value={lead.audit.objectiveAuditStatus ?? lead.audit.status} compact />
                   </td>
                   <td
                     className={cn("px-3 py-3", !visible.outreach && "hidden")}
@@ -1337,7 +1346,7 @@ function WebsiteAuditView({
   const [batchSize, setBatchSize] = useState("20");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string[]>([]);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(25);
   const statuses = [
     "PENDING",
     "QUEUED",
@@ -1352,7 +1361,7 @@ function WebsiteAuditView({
       `${lead.name} ${lead.website ?? ""} ${lead.address}`.toLowerCase();
     return (
       (!search || haystack.includes(search.toLowerCase())) &&
-      (!status || lead.audit.status === status)
+      (!status || (lead.audit.objectiveAuditStatus ?? lead.audit.status) === status)
     );
   });
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1361,7 +1370,7 @@ function WebsiteAuditView({
     visible.length > 0 &&
     visible.every((lead) => selected.includes(lead.leadId));
   const eligibleCount = websiteLeads.filter((lead) =>
-    ["PENDING", "FAILED", "BLOCKED"].includes(lead.audit.status),
+    ["PENDING", "FAILED", "BLOCKED"].includes(lead.audit.objectiveAuditStatus ?? lead.audit.status),
   ).length;
   const requestedBatch = Math.min(50, Math.max(1, Number(batchSize) || 20));
 
@@ -1473,6 +1482,12 @@ function WebsiteAuditView({
           <span className="flex items-center px-1 text-[11px] text-[#8a96a5]">
             {filtered.length} of {websiteLeads.length}
           </span>
+          <label className="flex items-center gap-1.5 text-[10px] font-semibold text-[#8a96a5]">
+            Rows
+            <select aria-label="Audit page size" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} className="h-9 rounded-lg border border-[#e2e8ee] bg-white px-2 text-[11px] text-[#526275]">
+              {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
         </div>
       </div>
       <div className="overflow-hidden rounded-xl border border-[#e5eaf0] bg-white shadow-[0_2px_8px_rgba(15,35,58,.025)]">
@@ -1565,7 +1580,7 @@ function WebsiteAuditView({
                     <td className="px-3 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <StatusPill
-                          value={isAuditing ? "AUDITING" : audit.status}
+                          value={isAuditing ? "AUDITING" : (audit.objectiveAuditStatus ?? audit.status)}
                           compact
                         />
                         {audit.failureReason && (
@@ -1646,6 +1661,30 @@ function WebsiteAuditView({
   );
 }
 
+function QualifiedView({ leads, onOpenLead }: { leads: Lead[]; onOpenLead: (lead: Lead) => void }) {
+  const qualified = leads.filter((lead) => lead.qualificationStatus === "QUALIFIED" && lead.manualDecision !== "HOLD" && lead.manualDecision !== "SKIP");
+  return (
+    <div className="animate-fade-in space-y-5">
+      <div>
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-[.13em] text-[#00aaca]">Decision output</p>
+        <h1 className="text-[27px] font-bold tracking-[-.045em] text-[#17243a]">Qualified leads</h1>
+        <p className="mt-1 text-sm text-[#718096]">Only genuinely qualified leads and explicit QUALIFY overrides appear here.</p>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[#e5eaf0] bg-white shadow-[0_2px_8px_rgba(15,35,58,.025)]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse">
+            <thead className="border-b border-[#edf1f4] bg-[#fbfcfd]"><tr>{["Business", "Website", "Score", "Priority", "Qualification", ""].map((label) => <th key={label} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[.08em] text-[#8390a0]">{label}</th>)}</tr></thead>
+            <tbody className="divide-y divide-[#f0f2f5]">
+              {qualified.map((lead) => <tr key={lead.leadId} onClick={() => onOpenLead(lead)} className="cursor-pointer hover:bg-[#fbfdfe]"><td className="px-4 py-3"><p className="text-xs font-bold text-[#27364b]">{lead.name}</p><p className="mt-0.5 text-[10px] text-[#8a96a5]">{lead.address}</p></td><td className="px-4 py-3 text-[11px] text-[#526275]">{lead.website ?? "No website"}</td><td className="px-4 py-3 text-xs font-bold text-[#27364b]">{lead.score.isFinal ? `${lead.score.total}/100` : `Provisional ${lead.score.total}/100`}</td><td className="px-4 py-3"><PriorityPill value={lead.score.priority} provisional={!lead.score.isFinal} /></td><td className="px-4 py-3"><StatusPill value="QUALIFIED" compact /></td><td className="px-4 py-3"><ChevronRight size={15} className="text-[#b5c0cb]" /></td></tr>)}
+              {qualified.length === 0 && <tr><td colSpan={6} className="px-4 py-12 text-center text-xs text-[#8793a4]">No qualified leads yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyView({
   view,
   leads,
@@ -1669,7 +1708,7 @@ function EmptyView({
       icon: Globe2,
       title: "Website audit workspace",
       body: "Automated audits will land here once the crawler is connected. For now, website leads remain queued for human review.",
-      stat: `${leads.filter((lead) => lead.hasWebsite && lead.audit.status === "PENDING").length} websites pending audit`,
+      stat: `${leads.filter((lead) => lead.hasWebsite && (lead.audit.objectiveAuditStatus ?? lead.audit.status) === "PENDING").length} websites pending audit`,
     },
     Qualified: {
       icon: ShieldCheck,
@@ -1930,6 +1969,10 @@ function LeadDrawer({
                 </span>
               </div>
             </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold text-[#728196]">
+              <span>Objective: {lead.audit.objectiveAuditStatus ?? lead.audit.status}</span>
+              {lead.hasWebsite && <span>Qualitative: {lead.audit.qualitativeAuditStatus ?? "NOT_READY"}</span>}
+            </div>
             <div className="mt-5 space-y-4">
               <ScoreBar
                 label="Business strength"
@@ -1989,7 +2032,7 @@ function LeadDrawer({
                 Problems & context
               </p>
               {lead.audit.status !== "NOT REQUIRED" && (
-                <StatusPill value={lead.audit.status} compact />
+                <StatusPill value={lead.audit.objectiveAuditStatus ?? lead.audit.status} compact />
               )}
             </div>
             {lead.audit.mainProblem && (
@@ -2200,6 +2243,9 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
   const publicScreenshot = audit.screenshotPath?.startsWith(
     "/audit-screenshots/",
   );
+  const screenshotHref = audit.screenshotUrl
+    ? `/api/audit/screenshot?url=${encodeURIComponent(audit.screenshotUrl)}`
+    : audit.screenshotPath;
   const technical = [
     ["Requested URL", audit.requestedUrl],
     ["Final URL", audit.finalUrl],
@@ -2266,9 +2312,9 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
             2A.
           </p>
         </div>
-        {publicScreenshot && audit.screenshotPath && (
+        {screenshotHref && (publicScreenshot || audit.screenshotUrl) && (
           <a
-            href={audit.screenshotPath}
+            href={screenshotHref}
             target="_blank"
             rel="noreferrer"
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#dce7ec] px-2 py-1.5 text-[10px] font-bold text-[#1684a0] hover:bg-[#f4fbfd]"
@@ -2276,11 +2322,12 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
             Screenshot <ExternalLink size={10} />
           </a>
         )}
-        {audit.screenshotPath && !publicScreenshot && (
+        {audit.screenshotError && (
           <span className="max-w-[150px] text-right text-[10px] font-semibold text-[#8a96a5]">
-            Screenshot saved to function temp storage
+            Screenshot upload failed; audit evidence is still available
           </span>
         )}
+        {audit.simulated && <span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-bold uppercase text-violet-700">Simulated demo</span>}
       </div>
       {audit.failureReason && (
         <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50 p-3 text-[11px] leading-relaxed text-rose-700">
@@ -2335,16 +2382,6 @@ type ImportResult = {
   errors: string[];
   columns: string[];
   report: ImportReport;
-};
-
-export type ImportReport = {
-  rawRows: number;
-  invalidRows: number;
-  duplicatesFound: number;
-  uniqueImported: number;
-  withWebsite: number;
-  noWebsite: number;
-  duplicateReasonCounts: DedupeReasonCounts;
 };
 
 function buildImportReport(
@@ -2420,6 +2457,8 @@ function ImportReportCard({
           value={report.noWebsite}
           tone="amber"
         />
+        {report.added !== undefined && <ReportMetric label="Added to workspace" value={report.added} tone="green" />}
+        {report.duplicatesAgainstWorkspace !== undefined && <ReportMetric label="Existing duplicates" value={report.duplicatesAgainstWorkspace} tone="amber" />}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#dceff2] pt-3">
         <span className="text-[10px] font-bold uppercase tracking-[.08em] text-[#7c919b]">
@@ -2462,11 +2501,15 @@ function ReportMetric({
 function ImportModal({
   onClose,
   onImport,
+  existingLeadCount,
 }: {
   onClose: () => void;
-  onImport: (leads: Lead[], report: ImportReport) => void;
+  onImport: (leads: Lead[], report: ImportReport, mode: ImportMode) => void | Promise<void>;
+  existingLeadCount: number;
 }) {
   const [stage, setStage] = useState<"upload" | "preview" | "done">("upload");
+  const [mode, setMode] = useState<ImportMode>("APPEND");
+  const [importError, setImportError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   function handleFile(file?: File) {
@@ -2595,6 +2638,24 @@ function ImportModal({
                 ))}
               </div>
             </div>
+            <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/60 p-3.5">
+              <p className="text-xs font-bold text-amber-800">Import behavior</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["APPEND", "REPLACE"] as ImportMode[]).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setMode(option)}
+                    className={cn("rounded-md border px-3 py-1.5 text-[10px] font-bold", mode === option ? "border-[#00aaca] bg-white text-[#08758b]" : "border-amber-200 text-amber-700")}
+                  >
+                    {option === "APPEND" ? "APPEND LEADS" : "REPLACE WORKSPACE"}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-amber-700">
+                {mode === "APPEND" ? "Existing production leads are preserved and incoming rows are deduplicated against them." : `This will replace ${existingLeadCount} existing leads and their audits. Confirmation is required.`}
+              </p>
+            </div>
             {result.rawPreview.length > 0 && (
               <div className="mt-3 overflow-hidden rounded-lg border border-[#eef1f4]">
                 <div className="flex items-center justify-between border-b border-[#eef1f4] bg-[#fbfcfd] px-3.5 py-2.5">
@@ -2656,16 +2717,23 @@ function ImportModal({
                 Choose another file
               </button>
               <button
-                onClick={() => {
-                  onImport(result.unique, result.report);
-                  setStage("done");
+                onClick={async () => {
+                  if (mode === "REPLACE" && !window.confirm(`Replace the production workspace? ${existingLeadCount} leads and their audits will be removed.`)) return;
+                  try {
+                    setImportError(null);
+                    await onImport(result.unique, result.report, mode);
+                    setStage("done");
+                  } catch (error) {
+                    setImportError(error instanceof Error ? error.message : "Import failed");
+                  }
                 }}
                 disabled={!result.unique.length}
                 className="flex items-center gap-2 rounded-lg bg-[#00bce3] px-4 py-2.5 text-xs font-bold text-[#06273a] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Import {result.unique.length} leads <Check size={14} />
+                {mode === "REPLACE" ? "Replace workspace" : `Append ${result.unique.length} leads`} <Check size={14} />
               </button>
             </div>
+            {importError && <p className="mt-3 text-right text-[11px] font-semibold text-rose-600">{importError}</p>}
           </div>
         )}
         {stage === "done" && (
@@ -2763,60 +2831,30 @@ export function LeadEngine() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [auditRunningIds, setAuditRunningIds] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as {
-          mode?: WorkspaceMode;
-          leads?: Lead[];
-          lastImportReport?: ImportReport | null;
-        };
-        if (Array.isArray(parsed.leads)) {
-          setLeads(
-            parsed.leads.map((lead) => {
-              const score = calculateLeadScore(lead);
-              const automaticQualification = automaticQualificationFor({
-                hasWebsite: lead.hasWebsite,
-                audit: lead.audit,
-                score,
-              });
-              return {
-                ...lead,
-                score,
-                automaticQualification,
-                qualificationStatus: effectiveQualificationFor(
-                  lead.manualDecision,
-                  automaticQualification,
-                ),
-              };
-            }),
-          );
-        }
-        if (parsed.mode === "DEMO" || parsed.mode === "PRODUCTION")
-          setMode(parsed.mode);
-        if (parsed.lastImportReport !== undefined)
-          setLastImportReport(parsed.lastImportReport ?? null);
-      }
-    } catch {
-      // A corrupt local workspace starts safely in the in-memory demo state.
-    } finally {
-      setStorageHydrated(true);
-    }
+    void fetch("/api/workspace")
+      .then(async (response) => {
+        if (!response.ok) return;
+        const parsed = (await response.json()) as { leads?: Lead[]; mode?: WorkspaceMode; lastImportReport?: ImportReport | null };
+        if (Array.isArray(parsed.leads) && parsed.leads.length > 0) setLeads(parsed.leads);
+        if (parsed.mode) setMode(parsed.mode);
+        if (parsed.lastImportReport !== undefined) setLastImportReport(parsed.lastImportReport ?? null);
+      })
+      .catch(() => undefined)
+      .finally(() => setStorageHydrated(true));
   }, []);
 
-  useEffect(() => {
-    if (!storageHydrated) return;
-    try {
-      window.localStorage.setItem(
-        WORKSPACE_STORAGE_KEY,
-        JSON.stringify({ mode, leads, lastImportReport }),
-      );
-    } catch {
-      // The in-memory workspace remains usable if browser storage is unavailable or full.
-    }
-  }, [leads, lastImportReport, mode, storageHydrated]);
+  async function ensureAdminSession() {
+    const session = await fetch("/api/auth");
+    if (session.ok && (await session.json()).authenticated) return true;
+    const token = window.prompt("Enter the Diginest admin token to perform this production action.");
+    if (!token) return false;
+    const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    setAuthRequired(!response.ok);
+    return response.ok;
+  }
 
   function updateLead(id: string, patch: Partial<Lead>) {
     setLeads((current) =>
@@ -2829,18 +2867,24 @@ export function LeadEngine() {
             next.automaticQualification,
           );
         if (selectedLead?.leadId === id) setSelectedLead(next);
+        if (mode === "PRODUCTION") {
+          void fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", lead: next }) });
+        }
         return next;
       }),
     );
   }
-  function importLeads(imported: Lead[], report: ImportReport) {
-    // A production import replaces the optional demo workspace; it never merges with it.
-    setLeads(imported.map((lead) => ({ ...lead, isDevelopmentSample: false })));
-    setMode("PRODUCTION");
-    setLastImportReport(report);
+  async function importLeads(imported: Lead[], report: ImportReport, importMode: ImportMode) {
+    if (!(await ensureAdminSession())) throw new Error("Authentication required");
+    const response = await fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: importMode === "REPLACE" ? "replace" : "append", mode: importMode, leads: imported, report }) });
+    const payload = (await response.json()) as { error?: string; leads?: Lead[]; mode?: WorkspaceMode; lastImportReport?: ImportReport | null };
+    if (!response.ok || !payload.leads) throw new Error(payload.error ?? "Workspace import failed");
+    setLeads(payload.leads);
+    setMode(payload.mode ?? "PRODUCTION");
+    setLastImportReport(payload.lastImportReport ?? null);
     setSelectedLead(null);
   }
-  function clearImportedLeads() {
+  async function clearImportedLeads() {
     if (mode !== "PRODUCTION") return;
     if (
       !window.confirm(
@@ -2848,17 +2892,24 @@ export function LeadEngine() {
       )
     )
       return;
+    if (!(await ensureAdminSession())) return;
+    const response = await fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
+    if (!response.ok) return;
     setLeads([]);
     setLastImportReport(null);
     setSelectedLead(null);
   }
-  function resetToDemo() {
+  async function resetToDemo() {
     if (
       !window.confirm(
         "Reset this workspace to development demo data? Imported leads will be removed.",
       )
     )
       return;
+    if (mode === "PRODUCTION" && !(await ensureAdminSession())) return;
+    if (mode === "PRODUCTION") {
+      await fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
+    }
     setLeads(sampleLeads);
     setMode("DEMO");
     setLastImportReport(null);
@@ -2896,6 +2947,7 @@ export function LeadEngine() {
   async function auditLead(id: string) {
     const lead = leads.find((item) => item.leadId === id);
     if (!lead?.hasWebsite || !lead.website) return;
+    if (!(await ensureAdminSession())) return;
     const retryCount = (lead.audit.retryCount ?? 0) + 1;
     try {
       const queued = transitionAuditStatus(lead.audit, "QUEUED");
@@ -2925,12 +2977,15 @@ export function LeadEngine() {
       applyAuditToLead(id, {
         ...lead.audit,
         status: "FAILED",
+        objectiveAuditStatus: "FAILED",
+        qualitativeAuditStatus: "NOT_READY",
         pageReachable: false,
         failureReason: "BROWSER_ERROR",
         failureMessage:
           error instanceof Error ? error.message : "Audit request failed",
         retryCount,
         lastAttemptAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
       });
     } finally {
       setAuditRunningIds((current) => current.filter((item) => item !== id));
@@ -2947,7 +3002,7 @@ export function LeadEngine() {
         (lead) =>
           lead.hasWebsite &&
           lead.website &&
-          ["PENDING", "FAILED", "BLOCKED"].includes(lead.audit.status),
+          ["PENDING", "FAILED", "BLOCKED"].includes(lead.audit.objectiveAuditStatus ?? lead.audit.status),
       )
       .slice(0, count)
       .map((lead) => lead.leadId);
@@ -2962,7 +3017,7 @@ export function LeadEngine() {
     if (label === "Website Audit")
       return String(
         leads.filter(
-          (lead) => lead.hasWebsite && lead.audit.status === "PENDING",
+          (lead) => lead.hasWebsite && (lead.audit.objectiveAuditStatus ?? lead.audit.status) === "PENDING",
         ).length,
       );
     if (label === "Preview Queue")
@@ -3053,13 +3108,13 @@ export function LeadEngine() {
         </div>
         <div className="flex items-center gap-3 border-t border-white/10 px-5 py-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1c3552] text-[11px] font-bold text-[#bfefff]">
-            MC
+            DA
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] font-semibold text-[#d8e3ee]">
-              Maya Chen
+              Diginest Admin
             </p>
-            <p className="truncate text-[10px] text-[#73879d]">Growth team</p>
+            <p className="truncate text-[10px] text-[#73879d]">Workspace admin</p>
           </div>
           <MoreHorizontal size={15} className="text-[#7b8ea3]" />
         </div>
@@ -3105,23 +3160,6 @@ export function LeadEngine() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative hidden md:block">
-              <Search
-                size={14}
-                className="absolute left-3 top-2.5 text-[#9aa6b4]"
-              />
-              <input
-                placeholder="Quick search..."
-                className="h-8 w-44 rounded-lg border border-[#e5eaf0] bg-[#fbfcfd] pl-8 pr-3 text-[11px] outline-none focus:border-[#00bce3] lg:w-56"
-              />
-            </div>
-            <button className="relative flex h-8 w-8 items-center justify-center rounded-lg text-[#718096] hover:bg-[#f5f7fa]">
-              <Bell size={16} />
-              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#00bce3]" />
-            </button>
-            <button className="hidden h-8 items-center gap-1.5 rounded-lg border border-[#e5eaf0] px-2.5 text-[11px] font-semibold text-[#526275] hover:bg-[#f5f7fa] sm:flex">
-              <CircleHelp size={14} /> Help
-            </button>
           </div>
         </header>
         <main className="mx-auto max-w-[1480px] p-4 sm:p-6 lg:p-8">
@@ -3150,9 +3188,13 @@ export function LeadEngine() {
               auditingIds={auditRunningIds}
             />
           )}
+          {activeView === "Qualified" && (
+            <QualifiedView leads={leads} onOpenLead={setSelectedLead} />
+          )}
           {activeView !== "Overview" &&
             activeView !== "Leads" &&
-            activeView !== "Website Audit" && (
+            activeView !== "Website Audit" &&
+            activeView !== "Qualified" && (
               <EmptyView
                 view={activeView}
                 leads={leads}
@@ -3175,6 +3217,7 @@ export function LeadEngine() {
         <ImportModal
           onClose={() => setShowImport(false)}
           onImport={importLeads}
+          existingLeadCount={leads.length}
         />
       )}
     </div>

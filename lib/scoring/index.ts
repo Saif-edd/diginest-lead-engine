@@ -50,7 +50,7 @@ export function websiteOpportunityScore(audit: WebsiteAudit) {
     audit.localSeo,
   ];
   const complete =
-    audit.status === "COMPLETE" &&
+    (audit.objectiveAuditStatus ?? audit.status) === "COMPLETE" &&
     requiredDimensions.every((value) => value != null);
   const score =
     clamp(audit.mobileScore ?? 0, 6) +
@@ -72,7 +72,7 @@ export function websiteOpportunityScore(audit: WebsiteAudit) {
 
 export function noWebsiteOpportunityScore(
   input: NonNullable<Lead["noWebsiteOpportunity"]>,
-  lead: Pick<Lead, "rating" | "totalRatings">,
+  lead: Pick<Lead, "rating" | "totalRatings"> & { reachability?: Lead["reachability"] },
 ) {
   const score =
     20 +
@@ -84,7 +84,10 @@ export function noWebsiteOpportunityScore(
     input.strongBusinessPresence >= 4 &&
     input.commercialPotential >= 3 &&
     (lead.rating ?? 0) >= 4.0 &&
-    (lead.totalRatings ?? 0) >= 10;
+    (lead.totalRatings ?? 0) >= 10 &&
+    Boolean(lead.reachability?.hasPhone ||
+      lead.reachability?.hasEmail ||
+      lead.reachability?.hasSocial);
   return { score, complete: true, confirmed };
 }
 
@@ -141,7 +144,7 @@ export function calculateLeadScore(
   const opportunityResult = lead.hasWebsite
     ? websiteOpportunityScore(lead.audit)
     : noWebsiteOpportunityScore(
-        lead.noWebsiteOpportunity ?? {
+      lead.noWebsiteOpportunity ?? {
           strongBusinessPresence: 0,
           commercialPotential: 0,
           digitalGap: 0,
@@ -155,12 +158,18 @@ export function calculateLeadScore(
     opportunityResult.score +
     reachability +
     previewPotential;
-  const pendingComponents = lead.hasWebsite
-    ? [
+  const pendingComponents = [
+    "Preview potential (unreviewed)",
+    "Commercial profile (unreviewed)",
+    ...(lead.hasWebsite
+      ? [
         ...(!opportunityResult.complete ? ["Website audit evidence"] : []),
-        "Qualitative audit (Sprint 2B)",
+        ...(lead.audit.qualitativeAuditStatus !== "COMPLETE"
+          ? ["Qualitative audit (Sprint 2B)"]
+          : []),
       ]
-    : [];
+      : []),
+  ];
   return {
     businessStrength,
     categoryContext,
@@ -186,8 +195,11 @@ export function automaticQualificationFor(
     lead.score.pendingComponents.includes("Website audit evidence")
   )
     return "PENDING WEBSITE AUDIT";
-  if (lead.hasWebsite) return "PENDING QUALITATIVE AUDIT";
-  if (lead.score.opportunityConfirmed && lead.score.total >= 50)
+  if (lead.hasWebsite && lead.audit.qualitativeAuditStatus !== "COMPLETE")
+    return "PENDING QUALITATIVE AUDIT";
+  if (lead.hasWebsite && lead.score.opportunityConfirmed && lead.score.total >= 50)
+    return "QUALIFIED";
+  if (lead.score.opportunityConfirmed && lead.score.total >= 50 && lead.score.isFinal)
     return "QUALIFIED";
   return "REVIEW";
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deduplicateLeads } from "../lib/dedupe";
 import { parseCsv } from "../lib/import/csv";
 import { leadIdentity, normalizeRows } from "../lib/normalization";
+import { mergeImportedLeads } from "../lib/import/workspace";
 
 describe("csv ingestion", () => {
   it("parses quoted values and preserves rows", () => {
@@ -55,5 +56,20 @@ describe("csv ingestion", () => {
       "normalized name + address": 0,
     });
     expect(leadIdentity(result.unique[0])).toBe("place:place-1");
+  });
+
+  it("appends only leads not already in production", () => {
+    const existing = normalizeRows([{ name: "Existing", address: "A", phone: "1234567" }]).leads;
+    const incoming = normalizeRows([{ name: "Existing copy", address: "B", phone: "1234567" }, { name: "New", address: "C", phone: "7654321" }]).leads;
+    const result = mergeImportedLeads(existing, incoming, "APPEND", { rawRows: 2, invalidRows: 0, duplicatesFound: 0, uniqueImported: 2, withWebsite: 0, noWebsite: 2, duplicateReasonCounts: { place_id: 0, phone: 0, "website/domain": 0, "normalized name + address": 0 } });
+    expect(result.leads).toHaveLength(2);
+    expect(result.report.added).toBe(1);
+    expect(result.report.duplicatesAgainstWorkspace).toBe(1);
+  });
+
+  it("replaces production only through explicit replace mode", () => {
+    const existing = normalizeRows([{ name: "Existing", address: "A" }]).leads;
+    const incoming = normalizeRows([{ name: "New", address: "B" }]).leads;
+    expect(mergeImportedLeads(existing, incoming, "REPLACE", { rawRows: 1, invalidRows: 0, duplicatesFound: 0, uniqueImported: 1, withWebsite: 0, noWebsite: 1, duplicateReasonCounts: { place_id: 0, phone: 0, "website/domain": 0, "normalized name + address": 0 } }).leads.map((lead) => lead.name)).toEqual(["New"]);
   });
 });
