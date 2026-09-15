@@ -11,7 +11,8 @@
     "test": "vitest run",
     "report:csv": "tsx scripts/import-report.ts",
     "calibrate:audit": "tsx scripts/calibrate-audit.ts",
-    "calibrate:production": "tsx scripts/calibrate-production.ts"
+    "calibrate:production": "tsx scripts/calibrate-production.ts",
+    "calibrate:qualitative": "tsx scripts/calibrate-qualitative.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
