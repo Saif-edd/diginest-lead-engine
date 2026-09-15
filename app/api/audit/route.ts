@@ -25,18 +25,32 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    try {
-      await assertPublicAuditUrl(body.requestedUrl);
-    } catch (error) {
-      const status = error instanceof AuditSsrfError ? 403 : error instanceof AuditUrlError ? 400 : 400;
-      return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid audit URL" }, { status });
-    }
     const lead = await findProductionLead(body.leadId);
     if (!lead || !lead.hasWebsite) return NextResponse.json({ error: "Production lead not found or has no website" }, { status: 404 });
     const retryCount = body.retryCount ?? (lead.audit.retryCount ?? 0) + 1;
     const key = body.idempotencyKey ?? `${body.leadId}:${body.requestedUrl}:${retryCount}`;
     const existingResult = await getAuditResult(key);
     if (existingResult) return NextResponse.json({ audit: existingResult, idempotent: true });
+    try {
+      await assertPublicAuditUrl(body.requestedUrl);
+    } catch (error) {
+      if (error instanceof AuditSsrfError) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid audit URL" }, { status: 403 });
+      }
+      if (error instanceof AuditUrlError) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid audit URL" }, { status: 400 });
+      }
+      const validationAudit = await crawlWebsite({
+        leadId: body.leadId,
+        requestedUrl: body.requestedUrl,
+        retryCount,
+      });
+      if (validationAudit.failureReason === "DNS_ERROR") {
+        await persistAuditResult(lead, validationAudit, key);
+        return NextResponse.json({ audit: validationAudit }, { status: 502 });
+      }
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid audit URL" }, { status: 400 });
+    }
     const queued = transitionAuditStatus(lead.audit, "QUEUED");
     const startedAt = new Date().toISOString();
     const auditing = transitionAuditStatus({ ...queued, retryCount, startedAt, heartbeatAt: startedAt, lastAttemptAt: startedAt }, "AUDITING");
