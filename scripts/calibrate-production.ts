@@ -7,6 +7,7 @@ const baseUrl = (process.env.DIGINest_PRODUCTION_URL ?? "https://diginest-lead-e
 const token = process.env.DIGINest_ADMIN_TOKEN;
 const batchSize = Math.min(30, Math.max(1, Number(process.env.DIGINest_CALIBRATION_BATCH ?? 30)));
 const selectionOffset = Math.max(0, Math.floor(Number(process.env.DIGINest_CALIBRATION_OFFSET ?? 0)));
+const selectionManifestPath = process.env.DIGINest_CALIBRATION_MANIFEST;
 const reportPath = process.env.DIGINest_CALIBRATION_REPORT ?? "C:\\tmp\\diginest-sprint-2a3-calibration.json";
 const signalNames: AuditSignalName[] = [
   "phone",
@@ -92,10 +93,17 @@ async function main() {
   if (!workspaceResponse.ok) throw new Error(`Workspace GET failed: ${JSON.stringify(workspace)}`);
   if (workspace.mode !== "PRODUCTION") throw new Error(`Refusing calibration in ${workspace.mode} workspace`);
   if (workspace.leads.length !== 1212) throw new Error(`Expected 1212 production leads, found ${workspace.leads.length}`);
-  const selected = selectCalibrationLeads(workspace.leads, selectionOffset + batchSize).slice(
-    selectionOffset,
-    selectionOffset + batchSize,
-  );
+  let fullSelection: Lead[];
+  if (selectionManifestPath) {
+    const manifest = JSON.parse(await fs.readFile(selectionManifestPath, "utf8")) as {
+      selection?: Array<{ leadId?: string }>;
+    };
+    const leadsById = new Map(workspace.leads.map((lead) => [lead.leadId, lead]));
+    fullSelection = (manifest.selection ?? []).map((item) => leadsById.get(item.leadId ?? "")).filter((lead): lead is Lead => Boolean(lead));
+  } else {
+    fullSelection = selectCalibrationLeads(workspace.leads, selectionOffset + batchSize);
+  }
+  const selected = fullSelection.slice(selectionOffset, selectionOffset + batchSize);
   if (selected.length !== batchSize) throw new Error(`Could only select ${selected.length} unique-host website leads`);
 
   const authResponse = await fetch(`${baseUrl}/api/auth`, {
@@ -113,7 +121,7 @@ async function main() {
   const results: Array<Record<string, unknown>> = [];
   for (const [index, lead] of selected.entries()) {
     const started = Date.now();
-    const idempotencyKey = `sprint-2a3-2026-09-15-v3-${lead.leadId}`;
+    const idempotencyKey = `sprint-2a3-2026-09-15-v4-${lead.leadId}`;
     console.log(`[${index + 1}/${selected.length}] ${lead.name} | ${lead.website}`);
     try {
       const response = await fetch(`${baseUrl}/api/audit`, {
@@ -205,6 +213,7 @@ async function main() {
     productionLeadCount: workspace.leads.length,
     productionWebsiteLeadCount: workspace.leads.filter((lead) => lead.hasWebsite && lead.website).length,
     selectionOffset,
+    selectionManifestPath,
     selection: selected.map((lead) => ({
       leadId: lead.leadId,
       business: lead.name,

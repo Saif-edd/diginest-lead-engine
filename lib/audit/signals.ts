@@ -41,6 +41,7 @@ function makeEvidence(
   baseUrl: string,
   detectionRule: string,
   exactText?: string,
+  contextElement: Element = element,
 ) : AuditSignalEvidence {
   const hrefValue = element.getAttribute("href");
   const href = hrefValue ? absoluteUrl(hrefValue, baseUrl) : undefined;
@@ -49,7 +50,7 @@ function makeEvidence(
     element: element.tagName.toLowerCase(),
     ...(href ? { href } : {}),
     detectionRule,
-    nearbyContext: nearbyContext(element),
+    nearbyContext: nearbyContext(contextElement),
     visible: isVisible(element),
     sourceUrl: baseUrl,
   };
@@ -149,29 +150,37 @@ function reviewEvidence(document: Document, baseUrl: string) {
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
     const isHeading = /^h[1-6]$/i.test(element.tagName);
-    const descendantReviewHeading = elements(element, "h1,h2,h3,h4,h5,h6").some((heading) =>
+    const reviewHeading = elements(element, "h1,h2,h3,h4,h5,h6").find((heading) =>
       reviewWords.test(cleanText(heading.textContent)),
     );
+    const descendantReviewHeading = Boolean(reviewHeading);
     const residualText = text.replace(reviewWords, "").trim();
     const hasReviewHeading =
       (isHeading && reviewWords.test(text) && residualText.length >= 20) ||
       (descendantReviewHeading &&
         residualText.length >= 20 &&
         (quotePattern.test(text) || /\b(?:patient|customer|client)\b|\bstars?\b|\b[1-5]\s*\/\s*5\b/i.test(residualText)));
-    const hasReviewContainer = reviewClass.test(classAndId) &&
-      (reviewWords.test(text) || quotePattern.test(text) || /\b(?:5|[1-4](?:\.\d)?)\s*(?:\/\s*5|stars?)\b/i.test(text));
+    const hasReviewContainer =
+      reviewClass.test(classAndId) &&
+      (quotePattern.test(text) ||
+        /\b(?:5|[1-4](?:\.\d)?)\s*(?:\/\s*5|stars?)\b/i.test(text) ||
+        (reviewWords.test(text) && text.length >= 40));
     const isQuote =
       element.tagName.toLowerCase() === "blockquote" &&
       text.length >= 20 &&
       (reviewWords.test(text) || reviewClass.test(classAndId) || quotePattern.test(text));
-    const hasGoogleReviewContext = elements(element, "a[href]").some((anchor) =>
+    const googleReviewAnchor = elements(element, "a[href]").find((anchor) =>
       /google\.[^/]+|maps\.google|g\.page|goo\.gl\/maps/i.test(anchor.getAttribute("href") ?? "") &&
       /review|testimonial|rating|star/i.test(cleanText(element.textContent)),
     );
+    const hasGoogleReviewContext = Boolean(googleReviewAnchor);
     if (hasReviewHeading || hasReviewContainer || isQuote || hasGoogleReviewContext) {
+      const sourceElement =
+        googleReviewAnchor ??
+        (isQuote ? element : hasReviewHeading && reviewHeading ? reviewHeading : element);
       result.push(
         makeEvidence(
-          element,
+          sourceElement,
           baseUrl,
           hasReviewHeading
             ? "review/testimonial heading with supporting section content"
@@ -180,7 +189,8 @@ function reviewEvidence(document: Document, baseUrl: string) {
               : hasGoogleReviewContext
                 ? "Google review link in a review context"
                 : "review/testimonial container with content or rating",
-          isHeading ? text : text.slice(0, 280),
+          isHeading ? text : undefined,
+          element,
         ),
       );
     }
@@ -217,14 +227,19 @@ function teamEvidence(document: Document, baseUrl: string) {
       text.length >= 18;
     const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12;
     if (headingMatch || relevantLink || profile || namedProvider) {
+      const providerElement = elements(element, "h2,h3,h4,h5,h6,p,li,a,[class*='profile'],[class*='doctor'],[class*='team']").find(
+        (candidate) => namedProviderOrCredential.test(cleanText(candidate.textContent)),
+      );
+      const sourceElement = relevantLink || isHeading || profile ? element : providerElement ?? element;
       result.push(
         makeEvidence(
-          element,
+          sourceElement,
           baseUrl,
           headingMatch || relevantLink
             ? "team/doctor heading or relevant profile page link"
             : "staff/profile content with provider name or credential",
-          isHeading || relevantLink ? text : text.slice(0, 220),
+          isHeading || relevantLink ? text : undefined,
+          element,
         ),
       );
     }
@@ -252,14 +267,19 @@ function servicesEvidence(document: Document, baseUrl: string) {
       servicePath.test(element.getAttribute("href") ?? "") &&
       (namedServicePattern.test(text) || text.length >= 18);
     if ((heading && namedContent) || (namedContent && /section|article|li|div/i.test(element.tagName)) || serviceLink) {
+      const serviceItem = elements(element, "li,a").find((item) =>
+        namedServicePattern.test(cleanText(item.textContent)),
+      );
+      const sourceElement = serviceLink || !serviceItem ? element : serviceItem;
       result.push(
         makeEvidence(
-          element,
+          sourceElement,
           baseUrl,
           serviceLink
             ? "named service/treatment link"
             : "service/treatment content with a named treatment or service item",
-          /^h[1-6]$/i.test(element.tagName) || serviceLink ? text : text.slice(0, 240),
+          /^h[1-6]$/i.test(element.tagName) || serviceLink ? text : undefined,
+          element,
         ),
       );
     }
@@ -273,10 +293,8 @@ const streetAddress = /\b\d{1,5}\s+[\w.'-]+(?:\s+[\w.'-]+){0,5}\s+(?:street|st\.
 function meaningfulAddress(text: string) {
   const cleaned = cleanText(text);
   if (cleaned.length < 8) return false;
-  return (
-    streetAddress.test(cleaned) ||
-    /\b(?:building|tower|floor|suite|unit|mall|healthcare|medical\s+city|district|centre|center|villa|village|area)\b/i.test(cleaned)
-  );
+  return streetAddress.test(cleaned) ||
+    /\b(?:building|tower|floor|suite|unit|mall|healthcare|medical\s+city|district|villa|village|area)\b/i.test(cleaned);
 }
 
 function locationEvidence(document: Document, baseUrl: string) {
@@ -288,15 +306,24 @@ function locationEvidence(document: Document, baseUrl: string) {
     if (!meaningfulAddress(text)) continue;
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
     const semanticAddress = element.tagName.toLowerCase() === "address" || /address|location/i.test(classAndId);
-    if (semanticAddress || locationLabel.test(text)) {
+    const addressLikeChild = elements(element, "address,p,li,span,a").find((candidate) =>
+      isVisible(candidate) &&
+      meaningfulAddress(cleanText(candidate.textContent)) &&
+      cleanText(candidate.textContent).length <= 280,
+    );
+    const sourceElement = element.tagName.toLowerCase() === "address"
+      ? element
+      : addressLikeChild ?? element;
+    if (semanticAddress || (locationLabel.test(text) && (streetAddress.test(text) || Boolean(addressLikeChild)))) {
       result.push(
         makeEvidence(
-          element,
+          sourceElement,
           baseUrl,
           element.tagName.toLowerCase() === "address"
             ? "semantic address element with meaningful business location"
             : "location/address context with meaningful address details",
-          text.slice(0, 260),
+          sourceElement === element ? text.slice(0, 260) : undefined,
+          element,
         ),
       );
     }
