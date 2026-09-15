@@ -144,6 +144,15 @@ describe("deterministic HTML signal detection", () => {
     expect(Object.keys(audit.signalEvidence ?? {})).toEqual(["email"]);
   });
 
+  it("does not store license or template numbers as phone evidence", () => {
+    const audit = detectHtmlSignals(
+      `<html><body><p>Ad License No. 5889VHC5-110626</p><p>Clin Medix Template 2800 256 508</p></body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.phoneFound).toBe(false);
+    expect(audit.signalEvidence?.phone).toBeUndefined();
+  });
+
   it("recognizes a strong Book a Visit CTA and a rendered WhatsApp widget", () => {
     const audit = detectHtmlSignals(
       `<html><body>

@@ -149,7 +149,8 @@ function whatsappWidgetEvidence(document: Document, baseUrl: string) {
   );
 }
 
-const phonePattern = /(?:\+?\d[\d\s().-]{6,}\d)/;
+const phonePattern = /(?<![A-Za-z0-9])(?:\+?\d[\d\s().-]{6,}\d)(?![A-Za-z0-9])/;
+const phoneContextPattern = /\b(?:phone|call|tel|telephone|mobile|helpline|contact|location|address|appointment)\b/i;
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const appointmentTextPattern =
   /\b(?:appointment|book(?:\s+(?:an?|your))?\s+(?:appointment|visit)|book\s+now|schedule(?:\s+(?:an?|your))?\s+appointment|request(?:\s+(?:an?|your))?\s+appointment|make(?:\s+(?:an?|your))?\s+appointment|appointment\s+booking|reserve(?:\s+(?:an?|your))?\s+appointment|rendez[- ]vous|prendre\s+rendez[- ]vous)\b/i;
@@ -450,6 +451,16 @@ export function detectHtmlSignals(
 ): Partial<WebsiteAudit> {
   const { document } = parseHTML(html);
 
+  const phoneTextEvidence = firstTextEvidence(
+    document,
+    baseUrl,
+    "address,footer,p,li,span",
+    phonePattern,
+    "visible phone number in semantic contact content",
+  ).filter((item) =>
+    item.element === "address" ||
+    phoneContextPattern.test(`${item.exactText} ${item.nearbyContext ?? ""}`),
+  );
   const phoneEvidence = uniqueEvidence([
     ...collectAnchors(
       document,
@@ -457,13 +468,7 @@ export function detectHtmlSignals(
       (href, text) => /^tel:/i.test(href) || phonePattern.test(text),
       "tel link or visible phone number in an anchor",
     ),
-    ...firstTextEvidence(
-      document,
-      baseUrl,
-      "address,footer,p,li,span",
-      phonePattern,
-      "visible phone number in semantic contact content",
-    ),
+    ...phoneTextEvidence,
   ]);
   const whatsappEvidence = uniqueEvidence([
     ...collectAnchors(
