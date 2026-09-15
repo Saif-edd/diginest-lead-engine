@@ -157,11 +157,9 @@ export async function crawlWebsite(
           : undefined;
       })
       .catch(() => undefined);
-    const screenshotRoot = path.join(
-      process.cwd(),
-      "public",
-      "audit-screenshots",
-    );
+    const screenshotRoot = isVercel
+      ? path.join("/tmp", "diginest-audit-screenshots")
+      : path.join(process.cwd(), "public", "audit-screenshots");
     const screenshotDirectory = path.join(
       screenshotRoot,
       input.leadId.replace(/[^a-zA-Z0-9_-]/g, "_"),
@@ -187,7 +185,9 @@ export async function crawlWebsite(
         loadEventMs: navigationTiming?.loadEventMs ?? Date.now() - startedAt,
         measuredAt: auditTimestamp,
       },
-      screenshotPath: `/audit-screenshots/${input.leadId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${screenshotName}`,
+      screenshotPath: isVercel
+        ? screenshotFile
+        : `/audit-screenshots/${input.leadId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${screenshotName}`,
       auditTimestamp,
       retryCount: input.retryCount ?? 0,
       lastAttemptAt: auditTimestamp,

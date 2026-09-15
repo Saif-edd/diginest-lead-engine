@@ -2197,6 +2197,9 @@ function EvidenceSignal({
 }
 
 function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
+  const publicScreenshot = audit.screenshotPath?.startsWith(
+    "/audit-screenshots/",
+  );
   const technical = [
     ["Requested URL", audit.requestedUrl],
     ["Final URL", audit.finalUrl],
@@ -2263,7 +2266,7 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
             2A.
           </p>
         </div>
-        {audit.screenshotPath && (
+        {publicScreenshot && audit.screenshotPath && (
           <a
             href={audit.screenshotPath}
             target="_blank"
@@ -2272,6 +2275,11 @@ function AuditEvidence({ audit }: { audit: WebsiteAudit }) {
           >
             Screenshot <ExternalLink size={10} />
           </a>
+        )}
+        {audit.screenshotPath && !publicScreenshot && (
+          <span className="max-w-[150px] text-right text-[10px] font-semibold text-[#8a96a5]">
+            Screenshot saved to function temp storage
+          </span>
         )}
       </div>
       {audit.failureReason && (
