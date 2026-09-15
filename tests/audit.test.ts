@@ -199,6 +199,14 @@ describe("deterministic HTML signal detection", () => {
     expect(audit.teamIndicators).toBe(false);
   });
 
+  it("does not treat a business category heading as a named service", () => {
+    const audit = detectHtmlSignals(
+      `<html><body><h1>HOPE REHABILITATION</h1><a href="/services/">Our Services</a></body></html>`,
+      "https://example.test/",
+    );
+    expect(audit.servicesIndicators).toBe(false);
+  });
+
   it("detects abbreviated and directions-linked business addresses", () => {
     const footerAudit = detectHtmlSignals(
       `<html><body><footer><ul><li>Location: 1302 Al Ansari Exchange Bldg., Khalifa Street, Abu Dhabi</li></ul></footer></body></html>`,

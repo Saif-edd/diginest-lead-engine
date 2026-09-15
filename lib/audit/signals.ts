@@ -308,7 +308,7 @@ function teamEvidence(document: Document, baseUrl: string) {
 }
 
 const namedServicePattern =
-  /\b(?:dental\s+implants?|implants?|teeth\s+whitening|whitening|cleaning|hygiene|braces?|orthodont(?:ics|ic)|invisalign|root\s+canal|veneers?|crowns?|bridges?|extractions?|physiotherapy|physical\s+therapy|massage|facial|laser|consultation|rehabilitation|acupuncture|botox|fillers?|skin\s+treatment|hair\s+removal|body\s+contouring|surgery|check[- ]?up)\b/i;
+  /\b(?:dental\s+implants?|implants?|teeth\s+whitening|whitening|cleaning|hygiene|braces?|orthodont(?:ics|ic)|invisalign|root\s+canal|veneers?|crowns?|bridges?|extractions?|physiotherapy|physical\s+therapy|massage|facial|laser|consultation|rehabilitation\s+(?:therapy|services?|programs?|treatments?)|acupuncture|botox|fillers?|skin\s+treatment|hair\s+removal|body\s+contouring|surgery|check[- ]?up)\b/i;
 
 function servicesEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
