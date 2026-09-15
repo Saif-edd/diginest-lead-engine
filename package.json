@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "report:csv": "tsx scripts/import-report.ts",
-    "calibrate:audit": "tsx scripts/calibrate-audit.ts"
+    "calibrate:audit": "tsx scripts/calibrate-audit.ts",
+    "calibrate:production": "tsx scripts/calibrate-production.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
