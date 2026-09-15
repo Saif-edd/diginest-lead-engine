@@ -190,7 +190,7 @@ function reviewEvidence(document: Document, baseUrl: string) {
 
 function teamEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
-  const teamWords = /our\s+team|meet\s+(?:the\s+)?team|our\s+doctors?|meet\s+(?:our\s+)?doctors?|dentists?|therapists?|staff|m[eé]decins?|[eé]quipe/i;
+  const teamWords = /\b(?:our\s+team|meet\s+(?:the\s+)?team|our\s+doctors?|meet\s+(?:our\s+)?doctors?|dentists?|therapists?|staff|m[eé]decins?|[eé]quipe)\b/i;
   const profileClass = /team|doctor|dentist|therapist|staff|profile|provider/i;
   const titleOrCredential = /\b(?:dr\.?|doctor|dentist|therapist|physiotherapist|physician|specialist|dds|dmd|md|rn)\b/i;
   const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/;
@@ -282,6 +282,7 @@ function meaningfulAddress(text: string) {
 function locationEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
   for (const element of elements(document, "address,[class*='address' i],[id*='address' i],[class*='location' i],[id*='location' i],footer,section")) {
+    if (/^(html|body|main|header)$/i.test(element.tagName)) continue;
     if (!isVisible(element)) continue;
     const text = cleanText(element.textContent);
     if (!meaningfulAddress(text)) continue;

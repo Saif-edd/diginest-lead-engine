@@ -6,6 +6,7 @@ import type { Lead } from "../types/lead";
 const baseUrl = (process.env.DIGINest_PRODUCTION_URL ?? "https://diginest-lead-engine.vercel.app").replace(/\/$/, "");
 const token = process.env.DIGINest_ADMIN_TOKEN;
 const batchSize = Math.min(30, Math.max(1, Number(process.env.DIGINest_CALIBRATION_BATCH ?? 30)));
+const selectionOffset = Math.max(0, Math.floor(Number(process.env.DIGINest_CALIBRATION_OFFSET ?? 0)));
 const reportPath = process.env.DIGINest_CALIBRATION_REPORT ?? "C:\\tmp\\diginest-sprint-2a3-calibration.json";
 const signalNames: AuditSignalName[] = [
   "phone",
@@ -39,7 +40,7 @@ function hostname(website: string) {
   }
 }
 
-function selectCalibrationLeads(leads: Lead[]) {
+function selectCalibrationLeads(leads: Lead[], targetSize = batchSize) {
   const buckets = new Map<string, Lead[]>();
   for (const lead of leads) {
     if (!lead.hasWebsite || !lead.website) continue;
@@ -56,7 +57,7 @@ function selectCalibrationLeads(leads: Lead[]) {
   const seenHosts = new Set<string>();
   for (const bucket of ["dental", "physio_medical", "wellness_beauty", "other"]) {
     for (const lead of buckets.get(bucket) ?? []) {
-      if (selected.length >= batchSize || selected.filter((item) => categoryBucket(item) === bucket).length >= quotas[bucket]) break;
+      if (selected.length >= targetSize || selected.filter((item) => categoryBucket(item) === bucket).length >= quotas[bucket]) break;
       const host = hostname(lead.website!);
       if (seenHosts.has(host)) continue;
       seenHosts.add(host);
@@ -65,7 +66,7 @@ function selectCalibrationLeads(leads: Lead[]) {
   }
   if (selected.length < batchSize) {
     for (const lead of leads.filter((item) => item.hasWebsite && item.website)) {
-      if (selected.length >= batchSize) break;
+      if (selected.length >= targetSize) break;
       const host = hostname(lead.website!);
       if (seenHosts.has(host)) continue;
       seenHosts.add(host);
@@ -91,7 +92,10 @@ async function main() {
   if (!workspaceResponse.ok) throw new Error(`Workspace GET failed: ${JSON.stringify(workspace)}`);
   if (workspace.mode !== "PRODUCTION") throw new Error(`Refusing calibration in ${workspace.mode} workspace`);
   if (workspace.leads.length !== 1212) throw new Error(`Expected 1212 production leads, found ${workspace.leads.length}`);
-  const selected = selectCalibrationLeads(workspace.leads);
+  const selected = selectCalibrationLeads(workspace.leads, selectionOffset + batchSize).slice(
+    selectionOffset,
+    selectionOffset + batchSize,
+  );
   if (selected.length !== batchSize) throw new Error(`Could only select ${selected.length} unique-host website leads`);
 
   const authResponse = await fetch(`${baseUrl}/api/auth`, {
@@ -200,6 +204,7 @@ async function main() {
     workspaceMode: workspace.mode,
     productionLeadCount: workspace.leads.length,
     productionWebsiteLeadCount: workspace.leads.filter((lead) => lead.hasWebsite && lead.website).length,
+    selectionOffset,
     selection: selected.map((lead) => ({
       leadId: lead.leadId,
       business: lead.name,

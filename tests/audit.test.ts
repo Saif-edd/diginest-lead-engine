@@ -126,6 +126,7 @@ describe("deterministic HTML signal detection", () => {
       `<!doctype html><html><body>
         <a href="/contact">Contact Us</a>
         <a href="https://www.google.com">Google</a>
+        <a href="mailto:contact@cosmeticdentist.example">contact@cosmeticdentist.example</a>
         <p>Our team works hard. Services available in Dubai.</p>
         <h2>Reviews</h2>
       </body></html>`,
@@ -135,9 +136,10 @@ describe("deterministic HTML signal detection", () => {
     expect(audit.googleMapsFound).toBe(false);
     expect(audit.reviewsIndicators).toBe(false);
     expect(audit.teamIndicators).toBe(false);
+    expect(audit.emailFound).toBe(true);
     expect(audit.servicesIndicators).toBe(false);
     expect(audit.locationIndicators).toBe(false);
-    expect(audit.signalEvidence).toEqual({});
+    expect(Object.keys(audit.signalEvidence ?? {})).toEqual(["email"]);
   });
 
   it("preserves hidden state in structured evidence without counting hidden controls", () => {
