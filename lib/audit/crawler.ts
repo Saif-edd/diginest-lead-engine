@@ -179,7 +179,12 @@ export async function crawlWebsite(
     await fs.mkdir(screenshotDirectory, { recursive: true });
     const screenshotName = `${auditTimestamp.replace(/[:.]/g, "-")}.png`;
     const screenshotFile = path.join(screenshotDirectory, screenshotName);
-    await page.screenshot({ path: screenshotFile, fullPage: false });
+    let screenshotError: string | undefined;
+    try {
+      await page.screenshot({ path: screenshotFile, fullPage: false, timeout: 10000 });
+    } catch (error) {
+      screenshotError = error instanceof Error ? error.message.slice(0, 300) : "Screenshot capture failed";
+    }
     await context.close();
     return {
       ...emptyWebsiteAudit("COMPLETE", requestedUrl),
@@ -198,8 +203,13 @@ export async function crawlWebsite(
         measuredAt: auditTimestamp,
       },
       screenshotPath: isVercel
-        ? screenshotFile
-        : `/audit-screenshots/${input.leadId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${screenshotName}`,
+        ? screenshotError
+          ? undefined
+          : screenshotFile
+        : screenshotError
+          ? undefined
+          : `/audit-screenshots/${input.leadId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${screenshotName}`,
+      ...(screenshotError ? { screenshotError } : {}),
       auditTimestamp,
       retryCount: input.retryCount ?? 0,
       lastAttemptAt: auditTimestamp,
