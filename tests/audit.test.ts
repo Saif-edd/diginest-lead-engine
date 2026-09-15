@@ -127,6 +127,7 @@ describe("deterministic HTML signal detection", () => {
         <a href="/contact">Contact Us</a>
         <a href="https://www.google.com">Google</a>
         <a href="mailto:contact@cosmeticdentist.example">contact@cosmeticdentist.example</a>
+        <a href="https://directory.example/best-pediatric-dentist-in-sharjah/">pediatric dentist in sharjah</a>
         <p>Our team works hard. Services available in Dubai.</p>
         <h2>Reviews</h2>
       </body></html>`,

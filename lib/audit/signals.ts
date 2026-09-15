@@ -204,6 +204,8 @@ function teamEvidence(document: Document, baseUrl: string) {
   const profileClass = /team|doctor|dentist|therapist|staff|profile|provider/i;
   const titleOrCredential = /\b(?:dr\.?|doctor|dentist|therapist|physiotherapist|physician|specialist|dds|dmd|md|rn)\b/i;
   const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/;
+  const relevantTeamLinkText = /^(?:our|meet(?:\s+the)?|the)?\s*(?:team|doctors?|dentists?|therapists?|staff|providers?)$/i;
+  const relevantTeamLinkPath = /(?:^|[/])(?:our[-_ ]?(?:team|doctors?|dentists?)|meet[-_ ]?(?:the[-_ ])?team|doctors?|dentists?|staff|therapists?|providers?)(?:[/?#]|$)/i;
   for (const element of contextualBlocks(
     document,
     "section,article,h1,h2,h3,h4,h5,h6,a,[class*='team'],[id*='team'],[class*='doctor'],[id*='doctor'],[class*='dentist'],[id*='dentist'],[class*='therapist'],[id*='therapist'],[class*='staff'],[id*='staff'],[class*='profile'],[id*='profile']",
@@ -220,8 +222,10 @@ function teamEvidence(document: Document, baseUrl: string) {
         (candidate) => cleanText(candidate.textContent).length >= 12 || Boolean(candidate.getAttribute("alt")),
       );
     const headingMatch = isHeading && teamWords.test(text) && headingSupport;
+    const href = element.getAttribute("href") ?? "";
     const relevantLink = element.tagName.toLowerCase() === "a" &&
-      teamWords.test(text) && (element.getAttribute("href") ?? "").length > 0;
+      (relevantTeamLinkText.test(text) || relevantTeamLinkPath.test(href)) &&
+      href.length > 0;
     const profile = profileClass.test(classAndId) &&
       (titleOrCredential.test(text) || elements(element, "img[alt],h2,h3,h4").length >= 1) &&
       text.length >= 18;
