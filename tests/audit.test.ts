@@ -212,6 +212,18 @@ describe("deterministic HTML signal detection", () => {
       visible: true,
       sourceUrl: "https://example.test/",
     });
+
+    const countryAudit = detectHtmlSignals(
+      `<html><body><span>Khalidiya, Abu Dhabi, UAE</span></body></html>`,
+      "https://example.test/",
+    );
+    expect(countryAudit.signalEvidence?.location?.[0]).toMatchObject({
+      exactText: "Khalidiya, Abu Dhabi, UAE",
+      element: "span",
+      detectionRule: "location/address context with meaningful address details",
+      visible: true,
+      sourceUrl: "https://example.test/",
+    });
   });
 
   it("preserves hidden state in structured evidence without counting hidden controls", () => {
