@@ -121,7 +121,7 @@ async function main() {
   const results: Array<Record<string, unknown>> = [];
   for (const [index, lead] of selected.entries()) {
     const started = Date.now();
-    const idempotencyKey = `sprint-2a3-2026-09-15-v4-${lead.leadId}`;
+    const idempotencyKey = `sprint-2a3-2026-09-15-v5-${lead.leadId}`;
     console.log(`[${index + 1}/${selected.length}] ${lead.name} | ${lead.website}`);
     try {
       const response = await fetch(`${baseUrl}/api/audit`, {
