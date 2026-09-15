@@ -202,10 +202,16 @@ function teamEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
   const teamWords = /\b(?:our\s+team|meet\s+(?:the\s+)?team|our\s+doctors?|meet\s+(?:our\s+)?doctors?|dentists?|therapists?|staff|m[eé]decins?|[eé]quipe)\b/i;
   const profileClass = /team|doctor|dentist|therapist|staff|profile|provider/i;
-  const titleOrCredential = /\b(?:dr\.?|doctor|dentist|therapist|physiotherapist|physician|specialist|dds|dmd|md|rn)\b/i;
   const namedProviderOrCredential = /\bdr\.?\s+[A-Z][\w'-]+|\b[A-Z][\w'-]+\s+(?:DDS|DMD|MD|RN)\b/;
   const relevantTeamLinkText = /^(?:our|meet(?:\s+the)?|the)?\s*(?:team|doctors?|dentists?|therapists?|staff|providers?)$/i;
-  const relevantTeamLinkPath = /(?:^|[/])(?:our[-_ ]?(?:team|doctors?|dentists?)|meet[-_ ]?(?:the[-_ ])?team|doctors?|dentists?|staff|therapists?|providers?)(?:[/?#]|$)/i;
+  const relevantTeamPathSegment = /^(?:team|doctors?|dentists?|staff|therapists?|providers?|our[-_](?:team|doctors?|dentists?)|meet[-_](?:the[-_])?team)$/i;
+  const relevantTeamLinkPath = (href: string) => {
+    try {
+      return new URL(href, baseUrl).pathname.split("/").some((segment) => relevantTeamPathSegment.test(segment));
+    } catch {
+      return false;
+    }
+  };
   for (const element of contextualBlocks(
     document,
     "section,article,h1,h2,h3,h4,h5,h6,a,[class*='team'],[id*='team'],[class*='doctor'],[id*='doctor'],[class*='dentist'],[id*='dentist'],[class*='therapist'],[id*='therapist'],[class*='staff'],[id*='staff'],[class*='profile'],[id*='profile']",
@@ -224,10 +230,13 @@ function teamEvidence(document: Document, baseUrl: string) {
     const headingMatch = isHeading && teamWords.test(text) && headingSupport;
     const href = element.getAttribute("href") ?? "";
     const relevantLink = element.tagName.toLowerCase() === "a" &&
-      (relevantTeamLinkText.test(text) || relevantTeamLinkPath.test(href)) &&
+      (relevantTeamLinkText.test(text) || relevantTeamLinkPath(href)) &&
       href.length > 0;
     const profile = profileClass.test(classAndId) &&
-      (titleOrCredential.test(text) || elements(element, "img[alt],h2,h3,h4").length >= 1) &&
+      element.tagName.toLowerCase() !== "a" &&
+      (namedProviderOrCredential.test(text) ||
+        (elements(element, "h2,h3,h4").some((heading) => elementHasMeaningfulText(heading, 8)) &&
+          elements(element, "img[alt]").some((image) => cleanText(image.getAttribute("alt")).length >= 8))) &&
       text.length >= 18;
     const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12;
     if (headingMatch || relevantLink || profile || namedProvider) {
