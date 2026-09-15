@@ -353,7 +353,7 @@ function locationEvidence(document: Document, baseUrl: string) {
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
     const semanticAddress = element.tagName.toLowerCase() === "address" || /address|location/i.test(classAndId);
-    const hasMapMarker = elements(element, "[class*='map' i],[class*='marker' i],[aria-label*='location' i]").some(isVisible);
+    const hasMapMarker = elements(element, "[class*='map' i],[class*='marker' i],[aria-label*='location' i]").length > 0;
     if (!meaningfulAddress(text) && !(hasMapMarker && localityAddress.test(text))) continue;
     const addressLikeChild = elements(element, "address,p,li,span,a").find((candidate) =>
       isVisible(candidate) &&
