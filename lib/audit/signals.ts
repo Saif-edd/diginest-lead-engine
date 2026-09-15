@@ -248,6 +248,13 @@ function teamEvidence(document: Document, baseUrl: string) {
     const text = cleanText(element.textContent);
     const classAndId = `${element.getAttribute("class") ?? ""} ${element.getAttribute("id") ?? ""}`;
     const isHeading = /^h[1-6]$/i.test(element.tagName);
+    const hasProfileContext = (() => {
+      let current: Element | null = element;
+      for (let depth = 0; current && depth < 4; depth += 1, current = current.parentElement) {
+        if (profileClass.test(`${current.getAttribute("class") ?? ""} ${current.getAttribute("id") ?? ""}`)) return true;
+      }
+      return false;
+    })();
     const parentText = cleanText(element.parentElement?.textContent);
     const headingSupport =
       namedProviderOrCredential.test(parentText) ||
@@ -265,7 +272,7 @@ function teamEvidence(document: Document, baseUrl: string) {
         (elements(element, "h2,h3,h4").some((heading) => elementHasMeaningfulText(heading, 8)) &&
           elements(element, "img[alt]").some((image) => cleanText(image.getAttribute("alt")).length >= 8))) &&
       text.length >= 18;
-    const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12;
+    const namedProvider = namedProviderOrCredential.test(text) && text.length >= 12 && (isHeading || hasProfileContext);
     if (headingMatch || relevantLink || profile || namedProvider) {
       const providerElement = elements(element, "h2,h3,h4,h5,h6,p,li,a,[class*='profile'],[class*='doctor'],[class*='team']").find(
         (candidate) => namedProviderOrCredential.test(cleanText(candidate.textContent)),
