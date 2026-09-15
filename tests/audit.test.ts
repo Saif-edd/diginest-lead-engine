@@ -181,6 +181,26 @@ describe("deterministic HTML signal detection", () => {
     });
   });
 
+  it("detects abbreviated and directions-linked business addresses", () => {
+    const footerAudit = detectHtmlSignals(
+      `<html><body><footer><ul><li>Location: 1302 Al Ansari Exchange Bldg., Khalifa Street, Abu Dhabi</li></ul></footer></body></html>`,
+      "https://example.test/",
+    );
+    expect(footerAudit.locationIndicators).toBe(true);
+
+    const linkedAudit = detectHtmlSignals(
+      `<html><body><a href="https://maps.google.com"><span>Get Directions </span><span>Amanah Tower Office 04 | Zayed 1st Street | Khalidiya | Abu Dhabi</span></a></body></html>`,
+      "https://example.test/",
+    );
+    expect(linkedAudit.signalEvidence?.location?.[0]).toMatchObject({
+      exactText: "Amanah Tower Office 04 | Zayed 1st Street | Khalidiya | Abu Dhabi",
+      element: "span",
+      detectionRule: "location/address context with meaningful address details",
+      visible: true,
+      sourceUrl: "https://example.test/",
+    });
+  });
+
   it("preserves hidden state in structured evidence without counting hidden controls", () => {
     const audit = detectHtmlSignals(
       `<html><body>

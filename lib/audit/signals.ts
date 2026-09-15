@@ -334,12 +334,12 @@ function meaningfulAddress(text: string) {
   const cleaned = cleanText(text);
   if (cleaned.length < 8) return false;
   return streetAddress.test(cleaned) ||
-    /\b(?:building|tower|floor|suite|unit|mall|healthcare|medical\s+city|district|villa|village|area)\b/i.test(cleaned);
+    /\b(?:building|bldg\.?|tower|floor|suite|unit|office|mall|healthcare|medical\s+city|district|villa|village|area)\b/i.test(cleaned);
 }
 
 function locationEvidence(document: Document, baseUrl: string) {
   const result: AuditSignalEvidence[] = [];
-  for (const element of elements(document, "address,[class*='address' i],[id*='address' i],[class*='location' i],[id*='location' i],footer,section")) {
+  for (const element of elements(document, "address,[class*='address' i],[id*='address' i],[class*='location' i],[id*='location' i],footer,section,a")) {
     if (/^(html|body|main|header)$/i.test(element.tagName)) continue;
     if (!isVisible(element)) continue;
     const text = cleanText(element.textContent);
