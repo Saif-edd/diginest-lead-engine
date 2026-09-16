@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     const currentStatus = qualitativeStatusFor(lead.audit);
-    const pending = currentStatus === "COMPLETE"
+    const pending = currentStatus === "COMPLETE" || currentStatus === "FAILED"
       ? transitionQualitativeStatus(lead.audit, "PENDING")
       : lead.audit;
     const startedAt = new Date().toISOString();

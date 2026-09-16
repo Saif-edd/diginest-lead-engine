@@ -43,7 +43,9 @@ describe("qualitative state machine", () => {
     const audit = emptyWebsiteAudit("COMPLETE");
     expect(qualitativeStatusFor(audit)).toBe("PENDING");
     expect(transitionQualitativeStatus(audit, "ANALYZING").qualitativeAuditStatus).toBe("ANALYZING");
-    expect(transitionQualitativeStatus({ ...audit, qualitativeAuditStatus: "FAILED" }, "PENDING").qualitativeAuditStatus).toBe("PENDING");
+    const retryPending = transitionQualitativeStatus({ ...audit, qualitativeAuditStatus: "FAILED" }, "PENDING");
+    expect(retryPending.qualitativeAuditStatus).toBe("PENDING");
+    expect(transitionQualitativeStatus(retryPending, "ANALYZING").qualitativeAuditStatus).toBe("ANALYZING");
     expect(() => transitionQualitativeStatus(emptyWebsiteAudit("PENDING"), "ANALYZING")).toThrow(/completed objective/);
   });
 });
@@ -93,4 +95,3 @@ describe("qualitative provider failure and idempotency", () => {
     expect(qualitativeIdempotencyKey(lead, 2)).not.toBe(first);
   });
 });
-
