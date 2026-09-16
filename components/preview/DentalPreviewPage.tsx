@@ -1,125 +1,249 @@
 "use client";
 
 import type { PreviewConfig, TrustItem, ServiceCard } from "@/types/preview";
-import { Star, Phone, MapPin, Calendar, CheckCircle2, Stethoscope, Clock, ShieldCheck, ChevronRight } from "lucide-react";
+import { Star, Phone, MapPin, Calendar, Menu, X, ArrowRight } from "lucide-react";
+import React, { useState } from "react";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
 }
 
-function TrustIcon({ icon }: { icon?: string }) {
-  if (icon === "star") return <Star className="fill-current text-yellow-400" size={24} />;
-  if (icon === "phone") return <Phone size={24} />;
-  if (icon === "location") return <MapPin size={24} />;
-  if (icon === "calendar") return <Calendar size={24} />;
-  if (icon === "whatsapp") {
-    return (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="#25D366" stroke="none">
-        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
-      </svg>
-    );
-  }
-  return <ShieldCheck size={24} />;
+function isValidImageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  if (/\.(jpg|jpeg|png|webp|gif|svg)(jpg|jpeg|png|webp|gif|svg)$/i.test(url)) return false;
+  if (!url.startsWith("http")) return false;
+  return true;
 }
 
-function TopContactBar({ phone, location }: { phone: string | null; location?: PreviewConfig["location"] }) {
+function getWhatsAppHref(whatsapp: string | null): string | null {
+  if (!whatsapp) return null;
+  const digits = whatsapp.replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  return `https://wa.me/${digits}`;
+}
+
+function formatRating(rating: number | null, reviewCount: number | null): string | null {
+  if (!rating) return null;
+  const ratingStr = `${rating} Google rating`;
+  if (reviewCount) return `${ratingStr} · ${reviewCount.toLocaleString()} reviews`;
+  return ratingStr;
+}
+
+// ─── Palette ─────────────────────────────────────────────────────────────────
+
+type ArchetypeKey = "DENTAL_CORE" | "DENTAL_PREMIUM" | "DENTAL_SPECIALIST";
+
+const PALETTE: Record<ArchetypeKey, {
+  primary: string; accent: string; bg: string; bgAlt: string;
+  dark: string; darkSection: string; navBorder: string;
+}> = {
+  DENTAL_CORE: {
+    primary: "#1B6FBF", accent: "#4EA8E4", bg: "bg-white", bgAlt: "bg-slate-50",
+    dark: "#0D1F3C", darkSection: "#0f172a", navBorder: "border-slate-200",
+  },
+  DENTAL_PREMIUM: {
+    primary: "#0B2D5E", accent: "#C9A96E", bg: "bg-[#FDFCF8]", bgAlt: "bg-white",
+    dark: "#0B2D5E", darkSection: "#0B2D5E", navBorder: "border-stone-200",
+  },
+  DENTAL_SPECIALIST: {
+    primary: "#193866", accent: "#2A7D4F", bg: "bg-white", bgAlt: "bg-[#F2F6F9]",
+    dark: "#0F2744", darkSection: "#193866", navBorder: "border-slate-200",
+  },
+};
+
+// ─── Icons ───────────────────────────────────────────────────────────────────
+
+function WaIcon({ className }: { className?: string }) {
   return (
-    <div className="hidden bg-[#0A1628] px-6 py-2.5 text-[11.5px] font-medium tracking-wide text-slate-300 sm:flex justify-between items-center">
-      <div className="flex gap-8 max-w-7xl mx-auto w-full px-2">
-        {location?.address && (
-          <span className="flex items-center gap-2 text-slate-200">
-            <MapPin size={13} className="text-blue-400" /> {location.address.split(',')[0]}
-          </span>
-        )}
-        <div className="ml-auto">
-          {phone && (
-            <a href={`tel:${phone}`} className="flex items-center gap-2 font-semibold text-white hover:text-blue-300 transition-colors">
-              <Phone size={13} className="text-blue-400" /> {phone}
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden>
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
+    </svg>
   );
 }
 
-function Header({ businessName, primaryCTA, logoUrl }: { businessName: string; primaryCTA: PreviewConfig["hero"]["primaryCTA"]; logoUrl?: string | null }) {
+function TrustIcon({ icon }: { icon?: string }) {
+  if (icon === "star") return <Star className="fill-yellow-400 text-yellow-400" size={20} />;
+  if (icon === "phone") return <Phone size={20} />;
+  if (icon === "location") return <MapPin size={20} />;
+  if (icon === "calendar") return <Calendar size={20} />;
+  if (icon === "whatsapp") return <WaIcon className="w-5 h-5 text-[#25D366]" />;
+  return <Star size={20} />;
+}
+
+// ─── Shared: Navbar ──────────────────────────────────────────────────────────
+
+function Navbar({
+  businessName, logoUrl, primaryCTA, archetype,
+}: {
+  businessName: string;
+  logoUrl: string | null;
+  primaryCTA: PreviewConfig["hero"]["primaryCTA"];
+  archetype: ArchetypeKey;
+}) {
+  const [open, setOpen] = useState(false);
+  const p = PALETTE[archetype];
+  const isPremium = archetype === "DENTAL_PREMIUM";
+
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-sm">
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-        <div className="flex items-center gap-3">
+    <header className={cn("sticky top-0 z-50 border-b backdrop-blur-md shadow-sm", isPremium ? "bg-[#FDFCF8]/95" : "bg-white/95", p.navBorder)}>
+      <div className="mx-auto flex h-[4.5rem] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        {/* Logo */}
+        <a href="#" className="shrink-0">
           {logoUrl ? (
-            <img src={logoUrl} alt={businessName} className="h-11 w-auto object-contain" />
+            <img src={logoUrl} alt={businessName} className="h-10 w-auto object-contain" />
           ) : (
-            <span className="text-[19px] font-bold tracking-tight text-[#0A1628] leading-tight max-w-[200px] sm:max-w-none">{businessName}</span>
+            <span
+              className="text-lg font-bold leading-tight max-w-[180px] sm:max-w-none truncate"
+              style={{ color: p.dark }}
+            >
+              {businessName}
+            </span>
           )}
-        </div>
+        </a>
+
+        {/* Desktop CTA */}
         {primaryCTA.href && (
           <a
             href={primaryCTA.href}
-            className="hidden rounded-full bg-blue-600 px-7 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:bg-blue-700 hover:shadow sm:block"
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all shadow-sm"
+            style={{ backgroundColor: isPremium ? p.accent : p.primary }}
           >
             {primaryCTA.label}
           </a>
         )}
+
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setOpen(!open)}
+          className="sm:hidden rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          aria-label="Toggle menu"
+        >
+          {open ? <X size={22} /> : <Menu size={22} />}
+        </button>
       </div>
+
+      {/* Mobile menu */}
+      {open && (
+        <div className="sm:hidden border-t border-slate-100 bg-white px-4 py-4 space-y-3">
+          {primaryCTA.href && (
+            <a
+              href={primaryCTA.href}
+              className="flex w-full items-center justify-center rounded-xl py-3 text-sm font-bold text-white"
+              style={{ backgroundColor: p.primary }}
+            >
+              {primaryCTA.label}
+            </a>
+          )}
+        </div>
+      )}
     </header>
   );
 }
 
-function Hero({ hero, archetype }: { hero: PreviewConfig["hero"]; archetype: string }) {
-  const isPremium = archetype === "DENTAL_PREMIUM";
-  const isSpecialist = archetype === "DENTAL_SPECIALIST";
+// ─── AnnouncementBar ─────────────────────────────────────────────────────────
+
+function AnnouncementBar({ phone, archetype }: { phone: string | null; archetype: ArchetypeKey }) {
+  if (!phone) return null;
+  const p = PALETTE[archetype];
+  return (
+    <div className="hidden sm:flex items-center justify-center gap-6 px-4 py-2.5 text-[11px] font-semibold tracking-wide text-white/90" style={{ backgroundColor: p.darkSection }}>
+      <span className="flex items-center gap-1.5">
+        <Phone size={11} className="opacity-70" />
+        <a href={`tel:${phone}`} className="hover:text-white transition-colors">{phone}</a>
+      </span>
+      <span className="h-3 w-px bg-white/20" />
+      <span className="opacity-60">Open for appointments</span>
+    </div>
+  );
+}
+
+// ─── DENTAL_CORE Hero (WebDentts-inspired full bleed) ────────────────────────
+
+function CoreHero({ hero, business }: { hero: PreviewConfig["hero"]; business: PreviewConfig["business"] }) {
+  const ratingStr = formatRating(business.rating, business.reviewCount);
+  const heroImg = isValidImageUrl(hero.heroImageUrl) ? hero.heroImageUrl : null;
+  const waHref = getWhatsAppHref(business.whatsapp);
 
   return (
-    <section className="relative overflow-hidden bg-white pt-16 sm:pt-24 lg:pt-32 pb-20 lg:pb-36">
-      <div className="mx-auto max-w-7xl px-6 lg:flex lg:items-center lg:gap-16 lg:px-8">
-        <div className="mx-auto max-w-2xl lg:mx-0 lg:max-w-xl lg:flex-shrink-0">
-          <div className="mb-8 flex items-center gap-3">
-            <span className="rounded-full bg-blue-50 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-blue-700 ring-1 ring-inset ring-blue-600/20">
-              {hero.eyebrow}
-            </span>
+    <section className="relative min-h-[100svh] flex items-center pt-[4.5rem] pb-12 overflow-hidden">
+      {/* Background */}
+      <div className="absolute inset-0 z-0">
+        {heroImg ? (
+          <img
+            src={heroImg}
+            alt="Clinic"
+            className="absolute inset-0 w-full h-full object-cover object-center"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-[#0D1F3C] to-[#1B6FBF]" />
+        )}
+        {/* Gradient overlay — WebDentts style left-heavy */}
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-950/75 to-slate-950/30" />
+      </div>
+
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 w-full">
+        <div className="max-w-2xl">
+          {/* Eyebrow pill */}
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold" style={{ backgroundColor: "#1B6FBF22", color: "#4EA8E4", border: "1px solid #4EA8E433" }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#4EA8E4] animate-pulse" />
+            {hero.eyebrow}
           </div>
-          <h1
-            className={cn(
-              "text-4xl font-extrabold tracking-tight text-[#0A1628] sm:text-[3.5rem] sm:leading-[1.1]",
-              isPremium && "font-serif font-medium tracking-normal text-[#0A1628]",
-              isSpecialist && "text-blue-950"
-            )}
-          >
+
+          {/* Headline */}
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
             {hero.headline}
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-slate-600 sm:text-xl">
+
+          <p className="text-base sm:text-xl text-white/75 mb-10 max-w-xl leading-relaxed">
             {hero.subheadline}
           </p>
-          <div className="mt-10 flex flex-wrap items-center gap-4">
+
+          {/* CTAs — stacked on mobile, row on sm+ */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-10">
             {hero.primaryCTA.href && (
               <a
                 href={hero.primaryCTA.href}
-                className="rounded-full bg-blue-600 px-8 py-3.5 text-[14px] font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold text-white transition-all shadow-lg hover:opacity-90"
+                style={{ backgroundColor: "#1B6FBF" }}
               >
+                <Calendar size={17} />
                 {hero.primaryCTA.label}
               </a>
             )}
             {hero.secondaryCTA?.href && (
               <a
                 href={hero.secondaryCTA.href}
-                className="group flex items-center gap-2 rounded-full border border-slate-200 bg-white px-8 py-3.5 text-[14px] font-bold text-slate-700 transition-all hover:border-slate-300 hover:bg-slate-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold text-white border-2 border-white/30 bg-white/10 backdrop-blur-sm transition-all hover:bg-white/20"
               >
+                <Phone size={17} />
                 {hero.secondaryCTA.label}
-                <ChevronRight size={16} className="text-slate-400 transition-transform group-hover:translate-x-1" />
+              </a>
+            )}
+            {waHref && (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold border-2 transition-all"
+                style={{ borderColor: "#25D366", color: "#25D366", background: "rgba(37,211,102,0.08)" }}
+              >
+                <WaIcon className="w-[17px] h-[17px]" />
+                WhatsApp
               </a>
             )}
           </div>
-        </div>
-        <div className="mt-16 sm:mt-24 lg:mt-0 lg:flex-grow">
-          {hero.heroImageUrl ? (
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl shadow-2xl ring-1 ring-slate-900/5">
-              <img src={hero.heroImageUrl} alt="Clinic interior" className="h-full w-full object-cover object-center" />
-            </div>
-          ) : (
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl shadow-xl ring-1 ring-slate-900/5 relative flex items-center justify-center bg-slate-50">
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/50 via-slate-50 to-white" />
+
+          {/* Rating — factual only */}
+          {ratingStr && (
+            <div className="flex items-center gap-2 text-sm font-semibold text-white/90">
+              <span className="flex">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <Star key={i} size={15} className={cn("fill-current", i <= Math.round(business.rating ?? 0) ? "text-yellow-400" : "text-white/20")} />
+                ))}
+              </span>
+              <span>{ratingStr}</span>
             </div>
           )}
         </div>
@@ -128,48 +252,217 @@ function Hero({ hero, archetype }: { hero: PreviewConfig["hero"]; archetype: str
   );
 }
 
-function TrustStrip({ items }: { items: TrustItem[] }) {
-  if (items.length === 0) return null;
+// ─── DENTAL_PREMIUM Hero (editorial split layout) ───────────────────────────
+
+function PremiumHero({ hero, business }: { hero: PreviewConfig["hero"]; business: PreviewConfig["business"] }) {
+  const ratingStr = formatRating(business.rating, business.reviewCount);
+  const heroImg = isValidImageUrl(hero.heroImageUrl) ? hero.heroImageUrl : null;
+
   return (
-    <div className="border-y border-slate-200 bg-white">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-4 sm:divide-y-0">
-          {items.map((item, i) => (
-            <div key={i} className="flex flex-col items-center justify-center p-8 text-center sm:p-10 transition-colors hover:bg-slate-50/50">
-              <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+    <section className="bg-[#FDFCF8] pt-8 pb-0 overflow-hidden">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-end">
+          {/* Left: Text */}
+          <div className="pt-12 pb-16 lg:pb-24">
+            {/* Eyebrow */}
+            <p className="mb-8 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "#C9A96E" }}>
+              {hero.eyebrow}
+            </p>
+
+            {/* Headline — large, light weight for premium feel */}
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-light tracking-tight leading-[1.1] mb-6" style={{ color: "#0B2D5E" }}>
+              {hero.headline}
+            </h1>
+
+            <p className="text-lg text-slate-600 leading-relaxed mb-10 max-w-lg">
+              {hero.subheadline}
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-10">
+              {hero.primaryCTA.href && (
+                <a
+                  href={hero.primaryCTA.href}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl px-8 py-4 text-sm font-bold text-white transition-all shadow-md hover:opacity-90"
+                  style={{ backgroundColor: "#C9A96E" }}
+                >
+                  {hero.primaryCTA.label}
+                  <ArrowRight size={16} />
+                </a>
+              )}
+              {hero.secondaryCTA?.href && (
+                <a
+                  href={hero.secondaryCTA.href}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl px-8 py-4 text-sm font-bold border transition-all hover:bg-slate-50"
+                  style={{ borderColor: "#0B2D5E33", color: "#0B2D5E" }}
+                >
+                  <Phone size={16} />
+                  {hero.secondaryCTA.label}
+                </a>
+              )}
+            </div>
+
+            {/* Rating */}
+            {ratingStr && (
+              <div className="flex items-center gap-3">
+                <span className="flex">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <Star key={i} size={14} className={cn("fill-current", i <= Math.round(business.rating ?? 0) ? "text-[#C9A96E]" : "text-slate-200")} />
+                  ))}
+                </span>
+                <span className="text-sm font-medium text-slate-600">{ratingStr}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Image with decorative frame */}
+          <div className="relative flex justify-center lg:justify-end">
+            <div className="relative w-full max-w-lg">
+              {/* Decorative rotated background */}
+              <div className="absolute -inset-3 rotate-2 rounded-[2rem] opacity-20" style={{ backgroundColor: "#C9A96E" }} aria-hidden />
+              {/* Image container */}
+              <div className="relative overflow-hidden rounded-[1.75rem] shadow-2xl ring-8 ring-white aspect-[4/5]">
+                {heroImg ? (
+                  <img src={heroImg} alt="Clinic" className="w-full h-full object-cover object-center" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-[#0B2D5E] to-[#1a4a8a]" />
+                )}
+              </div>
+              {/* Floating rating card */}
+              {ratingStr && (
+                <div className="absolute -bottom-5 -left-5 bg-white rounded-2xl shadow-xl p-4 min-w-[160px]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="flex">
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <Star key={i} size={14} className={cn("fill-current", i <= Math.round(business.rating ?? 0) ? "text-yellow-400" : "text-slate-200")} />
+                      ))}
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: "#0B2D5E" }}>{business.rating}</span>
+                  </div>
+                  <p className="text-xs text-slate-500">{business.reviewCount?.toLocaleString()} Google reviews</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── DENTAL_SPECIALIST Hero (dark authority layout) ──────────────────────────
+
+function SpecialistHero({ hero, business }: { hero: PreviewConfig["hero"]; business: PreviewConfig["business"] }) {
+  const ratingStr = formatRating(business.rating, business.reviewCount);
+  const heroImg = isValidImageUrl(hero.heroImageUrl) ? hero.heroImageUrl : null;
+  const waHref = getWhatsAppHref(business.whatsapp);
+
+  return (
+    <section className="pt-0 pb-0 overflow-hidden" style={{ backgroundColor: "#0F2744" }}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-[1fr_1fr] gap-0 items-stretch min-h-[90svh]">
+          {/* Left: dark text */}
+          <div className="flex flex-col justify-center py-20 pr-0 lg:pr-12">
+            {/* Specialist badge */}
+            <div className="mb-6 inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest" style={{ backgroundColor: "#2A7D4F22", color: "#5cb888", border: "1px solid #2A7D4F44" }}>
+              {business.category}
+            </div>
+
+            {/* Eyebrow */}
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-white/40">{hero.eyebrow}</p>
+
+            {/* Headline */}
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight mb-6">
+              {hero.headline}
+            </h1>
+
+            <p className="text-base text-white/60 leading-relaxed mb-10 max-w-md">
+              {hero.subheadline}
+            </p>
+
+            {/* CTAs */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              {hero.primaryCTA.href && (
+                <a
+                  href={hero.primaryCTA.href}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold text-white transition-all shadow-lg hover:opacity-90"
+                  style={{ backgroundColor: "#2A7D4F" }}
+                >
+                  <Calendar size={17} />
+                  {hero.primaryCTA.label}
+                </a>
+              )}
+              {hero.secondaryCTA?.href && (
+                <a
+                  href={hero.secondaryCTA.href}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold text-white/80 border border-white/20 hover:bg-white/10 transition-all"
+                >
+                  <Phone size={17} />
+                  {hero.secondaryCTA.label}
+                </a>
+              )}
+              {waHref && (
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl px-7 py-4 text-sm font-bold border border-[#25D366]/30 text-[#5cd981] hover:bg-[#25D366]/10 transition-all"
+                >
+                  <WaIcon className="w-[17px] h-[17px]" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+
+            {/* Rating */}
+            {ratingStr && (
+              <div className="flex items-center gap-2 text-sm font-semibold text-white/70">
+                <span className="flex">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <Star key={i} size={14} className={cn("fill-current", i <= Math.round(business.rating ?? 0) ? "text-yellow-400" : "text-white/20")} />
+                  ))}
+                </span>
+                <span>{ratingStr}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Image panel */}
+          <div className="relative hidden lg:block">
+            <div className="absolute inset-0">
+              {heroImg ? (
+                <img src={heroImg} alt="Clinic" className="w-full h-full object-cover object-center opacity-70" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-[#193866] to-[#0d1f3c]" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0F2744] via-[#0F2744]/20 to-transparent" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Trust Pillars Bar ───────────────────────────────────────────────────────
+
+function TrustPillarsBar({ trustItems, archetype }: { trustItems: TrustItem[]; archetype: ArchetypeKey }) {
+  if (trustItems.length === 0) return null;
+  const p = PALETTE[archetype];
+  const isPremium = archetype === "DENTAL_PREMIUM";
+  const isSpecialist = archetype === "DENTAL_SPECIALIST";
+
+  return (
+    <section className={cn("border-y", isPremium ? "bg-white border-stone-200" : isSpecialist ? "bg-[#F2F6F9] border-slate-200" : "bg-slate-50 border-slate-200")}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-200">
+          {trustItems.slice(0, 4).map((item, i) => (
+            <div key={i} className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl mb-1" style={{ backgroundColor: `${p.primary}12`, color: p.primary }}>
                 <TrustIcon icon={item.icon} />
               </span>
-              <p className="text-2xl font-extrabold tracking-tight text-[#0A1628]">{item.value}</p>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Services({ services }: { services: ServiceCard[] }) {
-  return (
-    <section className="bg-slate-50 py-24 sm:py-32">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-blue-600">What we offer</p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#0A1628] sm:text-4xl">Premium Dental Services</h2>
-          <p className="mt-4 text-lg text-slate-600">Comprehensive care tailored to your unique smile, utilizing the latest in modern dental technology.</p>
-        </div>
-        <div className="mx-auto mt-16 grid max-w-2xl grid-cols-1 gap-6 sm:mt-20 lg:max-w-none lg:grid-cols-3">
-          {services.map((s, i) => (
-            <div key={i} className="group relative rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm transition-all hover:shadow-md hover:border-blue-200">
-              <div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-inset ring-blue-600/20 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                <CheckCircle2 size={24} />
-              </div>
-              <h3 className="text-lg font-bold text-[#0A1628]">{s.name}</h3>
-              {s.description ? (
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{s.description}</p>
-              ) : (
-                <p className="mt-2 text-[14px] leading-relaxed text-slate-600">Professional {s.name.toLowerCase()} treatments provided by our expert team.</p>
-              )}
+              <p className="text-xl font-extrabold tracking-tight" style={{ color: p.dark }}>{item.value}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">{item.label}</p>
             </div>
           ))}
         </div>
@@ -178,78 +471,255 @@ function Services({ services }: { services: ServiceCard[] }) {
   );
 }
 
-function Reputation({ business }: { business: PreviewConfig["business"] }) {
-  if (!business.rating || !business.reviewCount) return null;
+// ─── Services ────────────────────────────────────────────────────────────────
+
+const SERVICE_ICON_COLORS = [
+  { bg: "#1B6FBF18", text: "#1B6FBF" },
+  { bg: "#2A7D4F18", text: "#2A7D4F" },
+  { bg: "#C9A96E22", text: "#C9A96E" },
+  { bg: "#7B4FB318", text: "#7B4FB3" },
+  { bg: "#D9534F18", text: "#D9534F" },
+  { bg: "#4EA8E418", text: "#4EA8E4" },
+];
+
+function ServiceCards({ services, archetype }: { services: ServiceCard[]; archetype: ArchetypeKey }) {
+  if (services.length === 0) return null;
+  const p = PALETTE[archetype];
+  const isPremium = archetype === "DENTAL_PREMIUM";
+
   return (
-    <section className="bg-white py-24 sm:py-32">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto max-w-2xl lg:text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-blue-600">Our standard</p>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#0A1628] sm:text-4xl">Why choose our clinic</h2>
-          <p className="mt-4 text-lg text-slate-600">
-            We believe in transparent and high-quality dentistry. Every treatment is designed with your comfort in mind.
+    <section className={cn("py-20 sm:py-28", isPremium ? p.bgAlt : p.bgAlt)}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Section header — Ktabna style */}
+        <div className="mb-12 sm:mb-16 text-center">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: p.primary }}>
+            What we offer
           </p>
+          <h2 className="text-3xl sm:text-4xl font-bold" style={{ color: p.dark }}>
+            {isPremium ? "Our Treatments" : "Our Services"}
+          </h2>
         </div>
-        <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-4xl">
-          <dl className="grid max-w-xl grid-cols-1 gap-x-8 gap-y-10 lg:max-w-none lg:grid-cols-1 lg:gap-y-16 mx-auto">
-            <div className="relative pl-16">
-              <dt className="text-base font-bold text-[#0A1628]">
-                <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600">
-                  <Star className="h-6 w-6 text-yellow-400 fill-current" aria-hidden="true" />
+
+        <div className={cn(
+          "grid gap-5",
+          services.length === 1 ? "grid-cols-1 max-w-sm mx-auto" :
+          services.length === 2 ? "grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto" :
+          "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+        )}>
+          {services.map((s, i) => {
+            const iconColor = SERVICE_ICON_COLORS[i % SERVICE_ICON_COLORS.length];
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "group rounded-2xl border p-7 transition-all hover:shadow-md",
+                  isPremium ? "bg-[#FDFCF8] border-stone-200 hover:border-[#C9A96E]/40" : "bg-white border-slate-200 hover:border-[#1B6FBF]/30"
+                )}
+              >
+                <div
+                  className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold transition-all group-hover:scale-110"
+                  style={{ backgroundColor: iconColor.bg, color: iconColor.text }}
+                >
+                  {s.name.charAt(0).toUpperCase()}
                 </div>
-                Trusted & Verified
-              </dt>
-              <dd className="mt-2 text-base leading-7 text-slate-600">Rated {business.rating} stars by over {business.reviewCount} satisfied patients in {business.city}.</dd>
-            </div>
-          </dl>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: p.dark }}>{s.name}</h3>
+                {s.description && (
+                  <p className="text-sm leading-relaxed text-slate-600">{s.description}</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
   );
 }
 
-function Location({ location, phone, whatsapp }: { location: PreviewConfig["location"]; phone: string | null; whatsapp: string | null }) {
-  if (!location) return null;
+// ─── Why Choose (DENTAL_CORE dark section) ───────────────────────────────────
+
+function WhyChooseSection({ business, archetype }: { business: PreviewConfig["business"]; archetype: ArchetypeKey }) {
+  if (archetype !== "DENTAL_CORE") return null;
+  if (!business.rating) return null;
+
+  const bullets = [
+    business.rating ? `${business.rating} Google rating${business.reviewCount ? ` from ${business.reviewCount.toLocaleString()} reviews` : ""}` : null,
+    "Online appointment booking available",
+    "Phone and in-person consultations",
+    `Serving patients in ${business.city}`,
+  ].filter(Boolean) as string[];
+
   return (
-    <section className="bg-slate-50 py-24 sm:py-32 border-t border-slate-200">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto grid max-w-2xl grid-cols-1 gap-16 lg:max-w-none lg:grid-cols-2 lg:items-center">
+    <section className="py-20 sm:py-28" style={{ backgroundColor: "#0f172a" }}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-blue-600">Find Us</p>
-            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#0A1628] sm:text-4xl">Our Location</h2>
-            <p className="mt-4 text-lg leading-8 text-slate-600">
-              We are conveniently located in {location.city}. Reach out to us or drop by for a consultation.
+            <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em] text-[#4EA8E4]">
+              Why choose us
             </p>
-            <dl className="mt-10 space-y-6 text-base leading-7 text-slate-600">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
+              A clinic you can trust in {business.city}
+            </h2>
+            <p className="text-white/60 text-base leading-relaxed">
+              Our patients choose us for the quality of care, the transparency of our process, and our commitment to your comfort.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {bullets.map((b, i) => (
+              <div key={i} className="flex items-start gap-3 rounded-xl p-5" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ backgroundColor: "#1B6FBF33", color: "#4EA8E4" }}>✓</span>
+                <span className="text-sm font-medium text-white/80">{b}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Rating Spotlight (DENTAL_PREMIUM) ───────────────────────────────────────
+
+function RatingSpotlight({ business, archetype }: { business: PreviewConfig["business"]; archetype: ArchetypeKey }) {
+  if (archetype !== "DENTAL_PREMIUM") return null;
+  if (!business.rating) return null;
+  const ratingStr = formatRating(business.rating, business.reviewCount);
+
+  return (
+    <section className="py-20 sm:py-28 bg-white">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col lg:flex-row items-center gap-16">
+          {/* Large number */}
+          <div className="text-center lg:text-left shrink-0">
+            <p className="text-[5rem] sm:text-[7rem] font-bold leading-none tracking-tight" style={{ color: "#0B2D5E" }}>
+              {business.rating}
+            </p>
+            <span className="flex justify-center lg:justify-start mt-2">
+              {[1, 2, 3, 4, 5].map(i => (
+                <Star key={i} size={24} className={cn("fill-current", i <= Math.round(business.rating ?? 0) ? "text-[#C9A96E]" : "text-slate-200")} />
+              ))}
+            </span>
+            {business.reviewCount && (
+              <p className="mt-3 text-sm text-slate-500">{business.reviewCount.toLocaleString()} Google reviews</p>
+            )}
+          </div>
+          {/* Divider */}
+          <div className="hidden lg:block w-px h-32 bg-stone-200" />
+          {/* Editorial text */}
+          <div>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "#C9A96E" }}>
+              Our reputation
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-light tracking-tight mb-6" style={{ color: "#0B2D5E" }}>
+              Trusted by patients across {business.city}
+            </h2>
+            <p className="text-base text-slate-600 leading-relaxed max-w-xl">
+              {ratingStr} on Google — a reflection of our commitment to patient experience and clinical excellence.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Expertise Section (DENTAL_SPECIALIST) ───────────────────────────────────
+
+function ExpertiseSection({ business, services, archetype }: { business: PreviewConfig["business"]; services: ServiceCard[]; archetype: ArchetypeKey }) {
+  if (archetype !== "DENTAL_SPECIALIST") return null;
+
+  const points = [
+    business.rating ? `${business.rating} Google rating · ${business.reviewCount?.toLocaleString() ?? ""} reviews` : null,
+    `Specialist ${business.category} in ${business.city}`,
+    services.length > 0 ? `${services.length} specialist treatments available` : null,
+    "Direct appointment booking",
+  ].filter(Boolean) as string[];
+
+  return (
+    <section className="py-20 sm:py-28 bg-[#F2F6F9]">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <div>
+            <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "#2A7D4F" }}>
+              Clinical expertise
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-6" style={{ color: "#0F2744" }}>
+              Specialist care you can rely on
+            </h2>
+            <p className="text-base text-slate-600 leading-relaxed mb-8">
+              We combine specialist expertise with a patient-first approach to deliver exceptional outcomes.
+            </p>
+            <ul className="space-y-4">
+              {points.map((p, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: "#2A7D4F" }}>✓</span>
+                  <span className="text-sm text-slate-700">{p}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* Visual block */}
+          <div className="rounded-3xl p-10 text-center" style={{ backgroundColor: "#193866" }}>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40 mb-4">Established</p>
+            <p className="text-6xl font-bold text-white mb-2">{business.category.split(" ")[0]}</p>
+            <p className="text-white/60 text-sm">specialist clinic</p>
+            <p className="text-white/40 text-xs mt-2">{business.city}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Location Section ────────────────────────────────────────────────────────
+
+function LocationSection({ location, business, archetype }: { location: PreviewConfig["location"]; business: PreviewConfig["business"]; archetype: ArchetypeKey }) {
+  if (!location) return null;
+  const p = PALETTE[archetype];
+  const waHref = getWhatsAppHref(business.whatsapp);
+
+  return (
+    <section className={cn("py-20 sm:py-28", p.bgAlt)}>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <div>
+            <p className="mb-4 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: p.primary }}>
+              Find us
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4" style={{ color: p.dark }}>
+              Visit our clinic
+            </h2>
+            <p className="text-base text-slate-600 leading-relaxed mb-10">
+              We welcome patients from across {location.city} and the surrounding area.
+            </p>
+
+            <dl className="space-y-5">
               {location.address && (
-                <div className="flex gap-x-4">
-                  <dt className="flex-none">
-                    <MapPin className="h-6 w-6 text-blue-600" />
-                  </dt>
-                  <dd className="font-medium text-[#0A1628]">{location.address}</dd>
+                <div className="flex gap-4">
+                  <div className="shrink-0 mt-0.5">
+                    <MapPin size={18} style={{ color: p.primary }} />
+                  </div>
+                  <dd className="text-sm font-medium text-slate-800">{location.address}</dd>
                 </div>
               )}
-              {phone && (
-                <div className="flex gap-x-4">
-                  <dt className="flex-none">
-                    <Phone className="h-6 w-6 text-blue-600" />
-                  </dt>
+              {business.phone && (
+                <div className="flex gap-4">
+                  <div className="shrink-0 mt-0.5">
+                    <Phone size={18} style={{ color: p.primary }} />
+                  </div>
                   <dd>
-                    <a href={`tel:${phone}`} className="font-medium text-[#0A1628] hover:text-blue-600 transition-colors">
-                      {phone}
+                    <a href={`tel:${business.phone}`} className="text-sm font-medium text-slate-800 hover:underline">
+                      {business.phone}
                     </a>
                   </dd>
                 </div>
               )}
-              {whatsapp && (
-                <div className="flex gap-x-4">
-                  <dt className="flex-none">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#25D366" stroke="none">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z" />
-                    </svg>
-                  </dt>
+              {waHref && (
+                <div className="flex gap-4">
+                  <div className="shrink-0 mt-0.5">
+                    <WaIcon className="w-[18px] h-[18px] text-[#25D366]" />
+                  </div>
                   <dd>
-                    <a href={`https://wa.me/${whatsapp.replace(/\D/g, "")}`} className="font-medium text-[#0A1628] hover:text-[#25D366] transition-colors">
+                    <a href={waHref} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-800 hover:text-[#25D366] transition-colors">
                       WhatsApp Us
                     </a>
                   </dd>
@@ -257,107 +727,145 @@ function Location({ location, phone, whatsapp }: { location: PreviewConfig["loca
               )}
             </dl>
           </div>
-          {location.googleMapsUrl && (
-            <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
-              <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-slate-50/50">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-blue-600 shadow-sm">
-                  <MapPin size={32} />
+
+          {/* Map card */}
+          <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm aspect-[4/3] flex items-center justify-center">
+            {location.googleMapsUrl ? (
+              <div className="flex flex-col items-center gap-4 p-8 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: `${p.primary}12` }}>
+                  <MapPin size={28} style={{ color: p.primary }} />
                 </div>
                 <a
                   href={location.googleMapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-full bg-white px-6 py-2.5 text-[13px] font-bold text-[#0A1628] shadow-sm ring-1 ring-slate-200 transition-all hover:bg-slate-50 hover:shadow"
+                  className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:opacity-90"
+                  style={{ backgroundColor: p.primary }}
                 >
-                  Open in Google Maps &rarr;
+                  Open in Google Maps
+                  <ArrowRight size={16} />
                 </a>
+                <p className="text-xs text-slate-400">{location.address}</p>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center gap-3 p-8 text-center">
+                <MapPin size={36} style={{ color: `${p.primary}66` }} />
+                <p className="text-sm text-slate-500">{location.address}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function BookingCTA({ primaryCTA, businessName }: { primaryCTA: PreviewConfig["hero"]["primaryCTA"]; businessName: string }) {
+// ─── Booking Band (CTA) ──────────────────────────────────────────────────────
+
+function BookingBand({ primaryCTA, businessName, archetype }: {
+  primaryCTA: PreviewConfig["hero"]["primaryCTA"];
+  businessName: string;
+  archetype: ArchetypeKey;
+}) {
+  const p = PALETTE[archetype];
+  const isPremium = archetype === "DENTAL_PREMIUM";
+
   return (
-    <section className="relative isolate overflow-hidden bg-[#0A1628] px-6 py-24 text-center sm:py-32 lg:px-8">
-      <div className="mx-auto max-w-2xl">
-        <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Ready to transform your smile?</h2>
-        <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-slate-300">
-          Book your consultation at {businessName} today and experience premium dental care.
+    <section className="py-20 sm:py-28 text-center text-white" style={{ backgroundColor: p.darkSection }}>
+      <div className="mx-auto max-w-3xl px-4 sm:px-6">
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+          {isPremium ? `Book your consultation at ${businessName}` : `Ready to book an appointment?`}
+        </h2>
+        <p className="text-white/60 text-base mb-10 leading-relaxed">
+          {isPremium
+            ? "Experience premium dental care in a welcoming environment."
+            : `${businessName} is ready to welcome you. Contact us to schedule your visit.`}
         </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          {primaryCTA.href && (
-            <a
-              href={primaryCTA.href}
-              className="rounded-full bg-blue-600 px-8 py-3.5 text-[14px] font-bold text-white shadow-sm transition-all hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-            >
-              {primaryCTA.label}
-            </a>
-          )}
-        </div>
+        {primaryCTA.href && (
+          <a
+            href={primaryCTA.href}
+            className="inline-flex items-center gap-2 rounded-2xl px-8 py-4 text-sm font-bold text-white shadow-lg transition-all hover:opacity-90"
+            style={{ backgroundColor: isPremium ? p.accent : "#1B6FBF" }}
+          >
+            <Calendar size={18} />
+            {primaryCTA.label}
+          </a>
+        )}
       </div>
     </section>
   );
 }
+
+// ─── Footer ──────────────────────────────────────────────────────────────────
 
 function Footer({ businessName }: { businessName: string }) {
   return (
     <footer className="bg-white border-t border-slate-200">
-      <div className="mx-auto max-w-7xl px-6 py-12 md:flex md:items-center md:justify-between lg:px-8">
-        <div className="flex justify-center space-x-6 md:order-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Concept preview by Diginest</span>
-        </div>
-        <div className="mt-8 md:order-1 md:mt-0">
-          <p className="text-center text-[13px] leading-5 text-slate-500">
-            &copy; {new Date().getFullYear()} {businessName}. All rights reserved.
-          </p>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-sm text-slate-500">
+          &copy; {new Date().getFullYear()} {businessName}. All rights reserved.
+        </p>
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">
+          Concept preview by Diginest
+        </span>
       </div>
     </footer>
   );
 }
 
-export default function DentalPreviewPage({
-  config,
-}: {
-  config: PreviewConfig;
-}) {
-  const { hero, business, trustItems, services, location, sections, archetype, logoUrl } = config;
+// ─── Main export ─────────────────────────────────────────────────────────────
 
-  const showServices = sections.includes("services") && services && services.length > 0;
-  const showLocation = sections.includes("location");
-  const showFinalCTA = config.previewDepth === "STRONG" || config.previewDepth === "PREMIUM";
+export default function DentalPreviewPage({ config }: { config: PreviewConfig }) {
+  const { hero, business, trustItems, services, location, archetype, logoUrl } = config;
+  const a = archetype as ArchetypeKey;
+  const showServices = services && services.length > 0;
+  const showLocation = !!location;
+  const showBookingBand = config.previewDepth === "STRONG" || config.previewDepth === "PREMIUM";
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
-      <TopContactBar phone={business.phone} location={location} />
-      <Header businessName={business.name} primaryCTA={hero.primaryCTA} logoUrl={logoUrl} />
-      
-      <Hero hero={hero} archetype={archetype} />
-      <TrustStrip items={trustItems} />
-      
-      {showServices && <Services services={services} />}
-      
-      <Reputation business={business} />
-      
-      {showLocation && (
-        <Location
-          location={location}
-          phone={business.phone}
-          whatsapp={business.whatsapp}
-        />
+    <div className="min-h-screen text-slate-900 selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
+
+      {/* ── DENTAL_CORE ─────────────────────────────────────────── */}
+      {a === "DENTAL_CORE" && (
+        <>
+          <AnnouncementBar phone={business.phone} archetype={a} />
+          <Navbar businessName={business.name} logoUrl={logoUrl} primaryCTA={hero.primaryCTA} archetype={a} />
+          <CoreHero hero={hero} business={business} />
+          <TrustPillarsBar trustItems={trustItems} archetype={a} />
+          {showServices && <ServiceCards services={services} archetype={a} />}
+          <WhyChooseSection business={business} archetype={a} />
+          {showLocation && <LocationSection location={location} business={business} archetype={a} />}
+          {showBookingBand && <BookingBand primaryCTA={hero.primaryCTA} businessName={business.name} archetype={a} />}
+        </>
       )}
-      
-      {showFinalCTA && (
-        <BookingCTA
-          primaryCTA={hero.primaryCTA}
-          businessName={business.name}
-        />
+
+      {/* ── DENTAL_PREMIUM ──────────────────────────────────────── */}
+      {a === "DENTAL_PREMIUM" && (
+        <>
+          <Navbar businessName={business.name} logoUrl={logoUrl} primaryCTA={hero.primaryCTA} archetype={a} />
+          <PremiumHero hero={hero} business={business} />
+          <TrustPillarsBar trustItems={trustItems} archetype={a} />
+          {showServices && <ServiceCards services={services} archetype={a} />}
+          <RatingSpotlight business={business} archetype={a} />
+          {showLocation && <LocationSection location={location} business={business} archetype={a} />}
+          {showBookingBand && <BookingBand primaryCTA={hero.primaryCTA} businessName={business.name} archetype={a} />}
+        </>
       )}
-      
+
+      {/* ── DENTAL_SPECIALIST ───────────────────────────────────── */}
+      {a === "DENTAL_SPECIALIST" && (
+        <>
+          <AnnouncementBar phone={business.phone} archetype={a} />
+          <Navbar businessName={business.name} logoUrl={logoUrl} primaryCTA={hero.primaryCTA} archetype={a} />
+          <SpecialistHero hero={hero} business={business} />
+          <TrustPillarsBar trustItems={trustItems} archetype={a} />
+          {showServices && <ServiceCards services={services} archetype={a} />}
+          <ExpertiseSection business={business} services={services} archetype={a} />
+          {showLocation && <LocationSection location={location} business={business} archetype={a} />}
+          {showBookingBand && <BookingBand primaryCTA={hero.primaryCTA} businessName={business.name} archetype={a} />}
+        </>
+      )}
+
       <Footer businessName={business.name} />
     </div>
   );
