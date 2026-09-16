@@ -3043,9 +3043,11 @@ function slugPathSegment(slug: string | null): string {
 function PreviewQueueView({
   leads,
   onOpenLead,
+  ensureAdminSession,
 }: {
   leads: Lead[];
   onOpenLead: (lead: Lead) => void;
+  ensureAdminSession: () => Promise<boolean>;
 }) {
   const [previewStates, setPreviewStates] = useState<Record<string, PreviewRowState>>({});
 
@@ -3064,6 +3066,7 @@ function PreviewQueueView({
   }, [leads]);
 
   async function generatePreview(lead: Lead, forceRegenerate = false) {
+    if (!(await ensureAdminSession())) return;
     setPreviewStates((prev) => ({
       ...prev,
       [lead.leadId]: { ...prev[lead.leadId], leadId: lead.leadId, previewId: prev[lead.leadId]?.previewId ?? null, status: prev[lead.leadId]?.status ?? null, slug: prev[lead.leadId]?.slug ?? null, generating: true, error: null },
@@ -3091,6 +3094,7 @@ function PreviewQueueView({
   }
 
   async function markReady(leadId: string) {
+    if (!(await ensureAdminSession())) return;
     const state = previewStates[leadId];
     if (!state?.previewId) return;
     try {
@@ -3107,6 +3111,7 @@ function PreviewQueueView({
   }
 
   async function archivePreview(leadId: string) {
+    if (!(await ensureAdminSession())) return;
     const state = previewStates[leadId];
     if (!state?.previewId) return;
     try {
@@ -3733,7 +3738,7 @@ export function LeadEngine() {
             <QualifiedView leads={leads} onOpenLead={setSelectedLead} />
           )}
           {activeView === "Preview Queue" && (
-            <PreviewQueueView leads={leads} onOpenLead={setSelectedLead} />
+            <PreviewQueueView leads={leads} onOpenLead={setSelectedLead} ensureAdminSession={ensureAdminSession} />
           )}
           {activeView !== "Overview" &&
             activeView !== "Leads" &&
