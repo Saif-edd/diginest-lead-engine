@@ -54,7 +54,7 @@ JSON SHAPE:
     "reviewsTeamTrust":{"score":0,"maxScore":3,"severity":"NONE|MINOR|MAJOR|CRITICAL","reason":"","evidenceUsed":[],"confidence":"HIGH|MEDIUM|LOW"},
     "localSeoTechnical":{"score":0,"maxScore":4,"severity":"NONE|MINOR|MAJOR|CRITICAL","reason":"","evidenceUsed":[],"confidence":"HIGH|MEDIUM|LOW"}
   },
-  "mainProblem":"","mainProblemSeverity":"NONE|MINOR|MAJOR|CRITICAL","secondaryProblems":[],
+  "mainProblem":"","mainProblemSeverity":"NONE|MINOR|MAJOR|CRITICAL","secondaryProblems":[{"title":"","severity":"NONE|MINOR|MAJOR|CRITICAL","evidence":""}],
   "qualificationDecision":"QUALIFY|HOLD|SKIP","qualificationReason":"",
   "commercialProfile":{"score":0,"maxScore":5,"evidenceUsed":[],"confidence":"HIGH|MEDIUM|LOW"},
   "previewPotential":{"realInformationAssets":0,"clearServiceAngle":0,"transformationOpportunity":0,"personalizedCtaPotential":0,"evidenceUsed":[],"confidence":"HIGH|MEDIUM|LOW"},
@@ -84,7 +84,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       if (input.screenshotDataUrl) {
         userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl, detail: "high" } });
       }
-      const response = await fetch(`${providerEndpoint()}/chat/completions`, {
+      const request = {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -100,12 +100,21 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
           ],
         }),
         signal: controller.signal,
-      });
-      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-      if (!response.ok) {
-        const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
-        throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? "unknown error")}`.slice(0, 500), "PROVIDER_ERROR");
+      };
+      let response: Response | undefined;
+      let payload: Record<string, unknown> = {};
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        response = await fetch(`${providerEndpoint()}/chat/completions`, request);
+        payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+        if (response.ok) break;
+        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
+          const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
+          const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : undefined;
+          throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}`.slice(0, 500), "PROVIDER_ERROR");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
       }
+      if (!response?.ok) throw new QualitativeProviderError("Qualitative provider request failed", "PROVIDER_ERROR");
       const choices = Array.isArray(payload.choices) ? payload.choices : [];
       const message = choices[0] && typeof choices[0] === "object" ? (choices[0] as Record<string, unknown>).message : undefined;
       const content = message && typeof message === "object" ? (message as Record<string, unknown>).content : undefined;
