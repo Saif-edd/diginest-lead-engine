@@ -42,7 +42,7 @@ function makeMockLead(name: string, overrides: Partial<Lead> = {}): Lead {
         schemaVersion: "sprint-2b.v1",
         modelVersion: "test-model",
         analyzedAt: new Date().toISOString(),
-        dimensions: {} as any,
+        dimensions: {} as Record<string, unknown>,
         websiteOpportunityScore: 75,
         opportunityGate: { passes: true, criticalCount: 1, majorCount: 1, reason: "Passes gate" },
         mainProblem: "Weak CTA and booking path – users cannot easily book",

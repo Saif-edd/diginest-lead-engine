@@ -3164,10 +3164,12 @@ function V0PromptDrawer({
   leadName,
   previewId,
   onClose,
+  onGeneratePrompt,
 }: {
   leadName: string;
   previewId: string;
   onClose: () => void;
+  onGeneratePrompt?: () => Promise<void>;
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3273,8 +3275,22 @@ function V0PromptDrawer({
                       </div>
                     </>
                   ) : (
-                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-700">
-                      No prompt generated yet. Use "Generate Prompt" action first.
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-6 flex flex-col items-center justify-center text-center">
+                      <p className="text-xs text-amber-700 font-semibold mb-3">No V0 Prompt found for this lead.</p>
+                      {onGeneratePrompt ? (
+                        <button
+                          onClick={() => {
+                            setLoading(true);
+                            setError(null);
+                            onGeneratePrompt().finally(() => onClose());
+                          }}
+                          className="flex items-center gap-1 rounded-lg bg-[#00aaca] px-3 py-2 text-[11px] font-bold text-[#06273a]"
+                        >
+                          <Sparkles size={11} /> Generate V0 Prompt
+                        </button>
+                      ) : (
+                        <p className="text-xs text-amber-700">Use "Generate Prompt" action first.</p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3652,14 +3668,32 @@ function PreviewStudioView({
   }
 
   function applyRecord(leadId: string, rec: Record<string, unknown>) {
+    let ws = String(rec.workflow_status ?? rec.workflowStatus ?? "");
+    const legacy = String(rec.status ?? "");
+    // Check if prompt exists (not null and has keys)
+    const promptObj = rec.v0_prompt_json;
+    const hasPrompt = Boolean(promptObj && typeof promptObj === "object" && Object.keys(promptObj).length > 0);
+    const hasAssets = Boolean(rec.asset_pack_json && typeof rec.asset_pack_json === "object" && Object.keys(rec.asset_pack_json).length > 0);
+    const finalUrl = rec.final_preview_url ? String(rec.final_preview_url) : null;
+
+    if (!ws || ws === "undefined" || ws === "null" || ws === "NOT_STARTED") {
+      if (legacy === "READY") {
+        ws = finalUrl ? "READY_FOR_OUTREACH" : "PREVIEW_LINK_ADDED";
+      } else if (legacy === "DRAFT") {
+        ws = hasPrompt ? "PROMPT_READY" : "BRIEF_READY";
+      } else {
+        ws = "NOT_STARTED";
+      }
+    }
+
     updateState(leadId, {
       previewId: String(rec.id ?? "") || null,
-      workflowStatus: String(rec.workflow_status ?? rec.workflowStatus ?? "NOT_STARTED") as V0WorkflowStatusUI,
-      legacyStatus: String(rec.status ?? "") || null,
+      workflowStatus: ws as V0WorkflowStatusUI,
+      legacyStatus: legacy || null,
       slug: String(rec.slug ?? "") || null,
-      finalPreviewUrl: rec.final_preview_url ? String(rec.final_preview_url) : null,
-      hasPrompt: Boolean(rec.v0_prompt_json),
-      hasAssets: Boolean(rec.asset_pack_json),
+      finalPreviewUrl: finalUrl,
+      hasPrompt,
+      hasAssets,
     });
   }
 
@@ -3880,43 +3914,40 @@ function PreviewStudioView({
                     {/* Actions */}
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {/* Generate Brief */}
-                        {(!ws || ws === "NOT_STARTED" || ws === "ARCHIVED") && (
+                        {/* 1. NOT_STARTED -> Generate Brief */}
+                        {(!ws || ws === "NOT_STARTED") && (
                           <button
                             onClick={() => void handleGenerateBrief(lead)}
                             disabled={isLoading || !qResult}
                             className="flex items-center gap-1 rounded-lg bg-[#0a1628] px-2 py-1.5 text-[9px] font-bold text-white disabled:opacity-40"
                           >
                             {isLoading ? <Activity size={9} className="animate-spin" /> : <FileText size={9} />}
-                            Brief
+                            Generate Brief
                           </button>
                         )}
 
-                        {/* Generate Prompt – available after brief */}
-                        {hasBrief && (
+                        {/* 2. BRIEF_READY -> Generate Prompt */}
+                        {ws === "BRIEF_READY" && (
                           <button
                             onClick={() => void handleGeneratePrompt(lead)}
                             disabled={isLoading}
                             className="flex items-center gap-1 rounded-lg bg-[#00aaca] px-2 py-1.5 text-[9px] font-bold text-[#06273a] disabled:opacity-40"
                           >
                             {isLoading ? <Activity size={9} className="animate-spin" /> : <Sparkles size={9} />}
-                            Prompt
+                            Generate Prompt
                           </button>
                         )}
 
-                        {/* View / Copy Prompt Pack */}
-                        {hasPrompt && state.previewId && (
-                          <>
-                            <button
-                              onClick={() => { setDrawerLeadName(lead.name); setDrawerPreviewId(state.previewId!); }}
-                              className="flex items-center gap-1 rounded-lg border border-[#e2e8ee] px-2 py-1.5 text-[9px] font-semibold text-[#526275] hover:bg-[#f5f7fa]"
-                            >
-                              <FileText size={9} /> View Pack
-                            </button>
-                          </>
+                        {/* 3. PROMPT_READY -> View Pack, In V0 */}
+                        {(ws === "PROMPT_READY" || ws === "IN_V0") && state.previewId && (
+                          <button
+                            onClick={() => { setDrawerLeadName(lead.name); setDrawerPreviewId(state.previewId!); }}
+                            className="flex items-center gap-1 rounded-lg border border-[#e2e8ee] px-2 py-1.5 text-[9px] font-semibold text-[#526275] hover:bg-[#f5f7fa]"
+                          >
+                            <FileText size={9} /> View Pack
+                          </button>
                         )}
 
-                        {/* Mark In V0 */}
                         {ws === "PROMPT_READY" && (
                           <button
                             onClick={() => void handleMarkInV0(lead.leadId)}
@@ -3927,8 +3958,8 @@ function PreviewStudioView({
                           </button>
                         )}
 
-                        {/* Add Preview URL */}
-                        {(ws === "IN_V0" || ws === "PROMPT_READY" || ws === "BRIEF_READY") && state.previewId && (
+                        {/* 4. IN_V0 -> Add URL */}
+                        {ws === "IN_V0" && state.previewId && (
                           <button
                             onClick={() => setAddUrlPreviewId(state.previewId!)}
                             className="flex items-center gap-1 rounded-lg border border-[#e2e8ee] px-2 py-1.5 text-[9px] font-semibold text-[#526275] hover:bg-[#f5f7fa]"
@@ -3937,8 +3968,8 @@ function PreviewStudioView({
                           </button>
                         )}
 
-                        {/* Open Preview */}
-                        {finalUrl && (
+                        {/* 5. PREVIEW_LINK_ADDED -> Open Preview, Approve */}
+                        {(ws === "PREVIEW_LINK_ADDED" || ws === "READY_FOR_OUTREACH") && finalUrl && (
                           <a
                             href={finalUrl}
                             target="_blank"
@@ -3949,7 +3980,6 @@ function PreviewStudioView({
                           </a>
                         )}
 
-                        {/* Mark Ready for Outreach */}
                         {ws === "PREVIEW_LINK_ADDED" && (
                           <button
                             onClick={() => void handleMarkReady(lead.leadId)}
@@ -3960,7 +3990,7 @@ function PreviewStudioView({
                           </button>
                         )}
 
-                        {/* Archive */}
+                        {/* Archive action (available everywhere except NOT_STARTED and ARCHIVED) */}
                         {ws && ws !== "NOT_STARTED" && ws !== "ARCHIVED" && (
                           <button
                             onClick={() => void handleArchive(lead.leadId)}
@@ -4009,6 +4039,10 @@ function PreviewStudioView({
           leadName={drawerLeadName}
           previewId={drawerPreviewId}
           onClose={() => { setDrawerLeadName(null); setDrawerPreviewId(null); }}
+          onGeneratePrompt={async () => {
+            const lead = leads.find((l) => l.name === drawerLeadName);
+            if (lead) await handleGeneratePrompt(lead);
+          }}
         />
       )}
       {addUrlPreviewId && (
