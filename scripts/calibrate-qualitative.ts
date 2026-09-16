@@ -5,7 +5,7 @@ import type { Lead } from "../types/lead";
 import type { QualitativeResult } from "../types/qualitative";
 
 const baseUrl = (process.env.DIGINest_PRODUCTION_URL ?? "https://diginest-lead-engine.vercel.app").replace(/\/$/, "");
-const token = process.env.DIGINest_ADMIN_TOKEN;
+const token = process.env.DIGINEST_ADMIN_TOKEN;
 const batchSize = Math.min(20, Math.max(1, Number(process.env.DIGINest_QUALITATIVE_BATCH ?? 20)));
 const reportPath = process.env.DIGINest_QUALITATIVE_REPORT ?? "C:\\tmp\\diginest-sprint-2b-calibration.json";
 
@@ -64,7 +64,7 @@ async function jsonResponse(response: Response) {
 }
 
 async function main() {
-  if (!token) throw new Error("DIGINest_ADMIN_TOKEN is required");
+  if (!token) throw new Error("DIGINEST_ADMIN_TOKEN is required");
   const workspaceResponse = await fetch(`${baseUrl}/api/workspace`);
   const workspace = await jsonResponse(workspaceResponse) as unknown as { mode: string; leads: Lead[] };
   if (!workspaceResponse.ok) throw new Error(`Workspace GET failed: ${JSON.stringify(workspace)}`);
@@ -146,4 +146,3 @@ async function main() {
 }
 
 void main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });
-
