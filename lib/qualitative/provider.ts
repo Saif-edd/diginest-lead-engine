@@ -105,12 +105,15 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       let payload: Record<string, unknown> = {};
       for (let attempt = 0; attempt < 3; attempt += 1) {
         response = await fetch(`${providerEndpoint()}/chat/completions`, request);
-        payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+        const rawBody = await response.text();
+        try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
         if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
           const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
-          const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : undefined;
-          throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}`.slice(0, 500), "PROVIDER_ERROR");
+          const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : rawBody.trim() || undefined;
+          const retryAfter = response.headers.get("retry-after");
+          const suffix = retryAfter ? ` (retry-after: ${retryAfter})` : "";
+          throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}${suffix}`.slice(0, 500), "PROVIDER_ERROR");
         }
         await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
       }
