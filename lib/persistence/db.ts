@@ -3,6 +3,7 @@ import type { Lead, WorkspaceMode } from "@/types/lead";
 import type { ImportReport } from "@/types/import";
 import type { WebsiteAudit } from "@/types/audit";
 import type { QualitativeResult } from "@/types/qualitative";
+import type { PreviewRecord, PreviewConfig, PreviewStatus } from "@/types/preview";
 import { leadIdentity } from "@/lib/normalization";
 import { automaticQualificationFor, calculateLeadScore, effectiveQualificationFor } from "@/lib/scoring";
 import { recoverStaleAudit } from "@/lib/audit/state";
@@ -28,9 +29,12 @@ async function ensureSchema() {
       { sql: `CREATE TABLE IF NOT EXISTS audit_jobs (lead_id TEXT PRIMARY KEY, objective_status TEXT NOT NULL, qualitative_status TEXT NOT NULL, started_at TEXT, completed_at TEXT, heartbeat_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, audit_json TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
       { sql: `CREATE TABLE IF NOT EXISTS audit_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, audit_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
       { sql: `CREATE TABLE IF NOT EXISTS qualitative_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, result_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
+      { sql: `CREATE TABLE IF NOT EXISTS preview_records (id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'NOT_STARTED', vertical TEXT NOT NULL DEFAULT 'DENTAL', archetype TEXT NOT NULL, archetype_confidence TEXT NOT NULL, preview_depth TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, ready_at TEXT)`, args: [] },
       { sql: `CREATE INDEX IF NOT EXISTS leads_mode_idx ON leads(workspace_mode)`, args: [] },
       { sql: `CREATE INDEX IF NOT EXISTS audit_results_lead_idx ON audit_results(lead_id)`, args: [] },
       { sql: `CREATE INDEX IF NOT EXISTS qualitative_results_lead_idx ON qualitative_results(lead_id)`, args: [] },
+      { sql: `CREATE INDEX IF NOT EXISTS preview_records_lead_idx ON preview_records(lead_id)`, args: [] },
+      { sql: `CREATE INDEX IF NOT EXISTS preview_records_slug_idx ON preview_records(slug)`, args: [] },
     ]).then(() => undefined);
   }
   await schemaPromise;
@@ -161,4 +165,92 @@ export async function getQualitativeResult(idempotencyKey: string) {
   await ensureSchema();
   const result = await database().execute({ sql: "SELECT result_json FROM qualitative_results WHERE idempotency_key = ?", args: [idempotencyKey] });
   return result.rows[0] ? JSON.parse(String(result.rows[0].result_json)) as QualitativeResult : undefined;
+}
+
+// ============================================================
+// Preview Records
+// ============================================================
+
+function rowToPreviewRecord(row: Record<string, unknown>): PreviewRecord {
+  return {
+    id: String(row.id),
+    leadId: String(row.lead_id),
+    slug: String(row.slug),
+    status: String(row.status) as PreviewStatus,
+    vertical: "DENTAL",
+    archetype: String(row.archetype) as PreviewRecord["archetype"],
+    archetypeConfidence: String(row.archetype_confidence) as PreviewRecord["archetypeConfidence"],
+    previewDepth: String(row.preview_depth) as PreviewRecord["previewDepth"],
+    configJson: JSON.parse(String(row.config_json)) as PreviewConfig,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    readyAt: row.ready_at ? String(row.ready_at) : null,
+  };
+}
+
+export async function upsertPreviewRecord(record: Omit<PreviewRecord, "createdAt" | "updatedAt" | "readyAt">): Promise<PreviewRecord> {
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: `INSERT INTO preview_records (id, lead_id, slug, status, vertical, archetype, archetype_confidence, preview_depth, config_json, created_at, updated_at, ready_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          ON CONFLICT(id) DO UPDATE SET
+            slug = excluded.slug,
+            status = excluded.status,
+            archetype = excluded.archetype,
+            archetype_confidence = excluded.archetype_confidence,
+            preview_depth = excluded.preview_depth,
+            config_json = excluded.config_json,
+            updated_at = excluded.updated_at`,
+    args: [
+      record.id,
+      record.leadId,
+      record.slug,
+      record.status,
+      record.vertical,
+      record.archetype,
+      record.archetypeConfidence,
+      record.previewDepth,
+      JSON.stringify(record.configJson),
+      timestamp,
+      timestamp,
+    ],
+  });
+  const inserted = await database().execute({ sql: "SELECT * FROM preview_records WHERE id = ?", args: [record.id] });
+  return rowToPreviewRecord(inserted.rows[0] as Record<string, unknown>);
+}
+
+export async function updatePreviewStatus(id: string, status: PreviewStatus): Promise<void> {
+  await ensureSchema();
+  const timestamp = now();
+  const readyAt = status === "READY" ? timestamp : null;
+  await database().execute({
+    sql: "UPDATE preview_records SET status = ?, updated_at = ?, ready_at = COALESCE(?, ready_at) WHERE id = ?",
+    args: [status, timestamp, readyAt, id],
+  });
+}
+
+export async function findPreviewByLeadId(leadId: string): Promise<PreviewRecord | null> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE lead_id = ? ORDER BY created_at DESC LIMIT 1", args: [leadId] });
+  return result.rows[0] ? rowToPreviewRecord(result.rows[0] as Record<string, unknown>) : null;
+}
+
+export async function findPreviewBySlug(slug: string): Promise<PreviewRecord | null> {
+  await ensureSchema();
+  // slug stored as full path e.g. "/dentist/vision-dental-abu-dhabi"
+  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE slug = ?", args: [slug] });
+  return result.rows[0] ? rowToPreviewRecord(result.rows[0] as Record<string, unknown>) : null;
+}
+
+export async function listReadyPreviews(): Promise<PreviewRecord[]> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE status = 'READY' ORDER BY ready_at DESC", args: [] });
+  return result.rows.map((r) => rowToPreviewRecord(r as Record<string, unknown>));
+}
+
+export async function listAllPreviews(): Promise<PreviewRecord[]> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM preview_records ORDER BY created_at DESC", args: [] });
+  return result.rows.map((r) => rowToPreviewRecord(r as Record<string, unknown>));
 }

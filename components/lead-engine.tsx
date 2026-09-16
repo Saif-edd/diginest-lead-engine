@@ -3014,6 +3014,273 @@ function ImportStat({
   );
 }
 
+// ─── Preview Queue View ───────────────────────────────────────────────────────
+
+type PreviewStatusUI = "NOT_STARTED" | "DRAFT" | "READY" | "ARCHIVED";
+
+interface PreviewRowState {
+  leadId: string;
+  previewId: string | null;
+  status: PreviewStatusUI | null;
+  slug: string | null;
+  generating: boolean;
+  error: string | null;
+}
+
+function previewStatusTone(status: PreviewStatusUI | null) {
+  if (status === "READY") return "bg-emerald-50 text-emerald-700 border-emerald-100";
+  if (status === "DRAFT") return "bg-amber-50 text-amber-700 border-amber-100";
+  if (status === "ARCHIVED") return "bg-slate-100 text-slate-500 border-slate-200";
+  return "bg-slate-50 text-slate-500 border-slate-200";
+}
+
+function slugPathSegment(slug: string | null): string {
+  if (!slug) return "";
+  const parts = slug.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? slug;
+}
+
+function PreviewQueueView({
+  leads,
+  onOpenLead,
+}: {
+  leads: Lead[];
+  onOpenLead: (lead: Lead) => void;
+}) {
+  const [previewStates, setPreviewStates] = useState<Record<string, PreviewRowState>>({});
+
+  const previewCandidates = useMemo(() => {
+    return leads
+      .filter((lead) => {
+        const q = lead.qualificationStatus;
+        const manual = lead.manualDecision;
+        return (
+          q === "QUALIFIED" ||
+          manual === "QUALIFY" ||
+          q === "HOLD"
+        );
+      })
+      .sort((a, b) => b.score.total - a.score.total);
+  }, [leads]);
+
+  async function generatePreview(lead: Lead, forceRegenerate = false) {
+    setPreviewStates((prev) => ({
+      ...prev,
+      [lead.leadId]: { ...prev[lead.leadId], leadId: lead.leadId, previewId: prev[lead.leadId]?.previewId ?? null, status: prev[lead.leadId]?.status ?? null, slug: prev[lead.leadId]?.slug ?? null, generating: true, error: null },
+    }));
+
+    const action = forceRegenerate ? "regenerate" : "generate";
+    try {
+      const response = await fetch("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, leadId: lead.leadId }),
+      });
+      const payload = (await response.json()) as { record?: { id: string; slug: string; status: string }; error?: string };
+      if (!response.ok || !payload.record) throw new Error(payload.error ?? "Preview generation failed");
+      setPreviewStates((prev) => ({
+        ...prev,
+        [lead.leadId]: { leadId: lead.leadId, previewId: payload.record!.id, status: payload.record!.status as PreviewStatusUI, slug: payload.record!.slug, generating: false, error: null },
+      }));
+    } catch (error) {
+      setPreviewStates((prev) => ({
+        ...prev,
+        [lead.leadId]: { ...prev[lead.leadId], generating: false, error: error instanceof Error ? error.message : "Failed" },
+      }));
+    }
+  }
+
+  async function markReady(leadId: string) {
+    const state = previewStates[leadId];
+    if (!state?.previewId) return;
+    try {
+      await fetch("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status", previewId: state.previewId, status: "READY" }),
+      });
+      setPreviewStates((prev) => ({
+        ...prev,
+        [leadId]: { ...prev[leadId], status: "READY" },
+      }));
+    } catch { /* ignore */ }
+  }
+
+  async function archivePreview(leadId: string) {
+    const state = previewStates[leadId];
+    if (!state?.previewId) return;
+    try {
+      await fetch("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "status", previewId: state.previewId, status: "ARCHIVED" }),
+      });
+      setPreviewStates((prev) => ({
+        ...prev,
+        [leadId]: { ...prev[leadId], status: "ARCHIVED" },
+      }));
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="animate-fade-in space-y-5">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[.13em] text-[#00aaca]">
+            Preview Builder
+          </p>
+          <h1 className="text-[27px] font-bold tracking-[-.045em] text-[#17243a]">
+            Preview Queue
+          </h1>
+          <p className="mt-1 text-sm text-[#718096]">
+            Generate, review, and publish personalized dental previews for qualified leads.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg bg-[#e9fbff] px-3 py-2">
+          <Sparkles size={14} className="text-[#00aaca]" />
+          <span className="text-[11px] font-semibold text-[#00aaca]">
+            {previewCandidates.length} preview candidates
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-[#e5eaf0] bg-white shadow-[0_2px_8px_rgba(15,35,58,.025)]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] border-collapse">
+            <thead className="border-b border-[#edf1f4] bg-[#fbfcfd]">
+              <tr>
+                {["Business", "Qualification", "Priority", "Main Problem", "Depth", "Preview Status", "Actions"].map((label) => (
+                  <th key={label} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[.08em] text-[#8390a0]">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#f0f2f5]">
+              {previewCandidates.map((lead) => {
+                const state = previewStates[lead.leadId];
+                const qResult = lead.audit.qualitativeResult;
+                const depth = qResult?.recommendedPreviewDepth ?? "—";
+                const mainProblem = lead.audit.mainProblem ?? qResult?.mainProblem ?? "—";
+                const previewStatus = state?.status ?? null;
+                const isHold = lead.qualificationStatus === "HOLD";
+                const isGenerating = state?.generating ?? false;
+                const slug = state?.slug;
+                const previewUrl = slug ? `${slugPathSegment(slug)}` : null;
+
+                return (
+                  <tr key={lead.leadId} className="hover:bg-[#fbfdfe]">
+                    <td className="px-4 py-3">
+                      <button onClick={() => onOpenLead(lead)} className="text-left">
+                        <p className="text-xs font-bold text-[#27364b] hover:text-[#00aaca]">{lead.name}</p>
+                        <p className="mt-0.5 text-[10px] text-[#8a96a5] truncate max-w-[180px]">{lead.category}</p>
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusPill value={lead.qualificationStatus} compact />
+                      {isHold && (
+                        <span className="ml-1 text-[9px] font-bold text-amber-500 uppercase">hold</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <PriorityPill value={lead.score.priority} provisional={!lead.score.isFinal} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-[11px] text-[#526275] max-w-[200px] truncate">{mainProblem}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "inline-flex items-center rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[.06em]",
+                        depth === "PREMIUM" ? "bg-violet-50 text-violet-700 border-violet-100"
+                          : depth === "STRONG" ? "bg-cyan-50 text-cyan-700 border-cyan-100"
+                          : depth === "LIGHT" ? "bg-sky-50 text-sky-700 border-sky-100"
+                          : "bg-slate-50 text-slate-500 border-slate-200",
+                      )}>
+                        {depth}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {previewStatus ? (
+                        <span className={cn("inline-flex items-center rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-[.06em]", previewStatusTone(previewStatus))}>
+                          {previewStatus}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[#b0bbc8]">Not started</span>
+                      )}
+                      {state?.error && (
+                        <p className="mt-1 text-[10px] text-rose-500 max-w-[140px] truncate">{state.error}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {!previewStatus && (
+                          <button
+                            onClick={() => void generatePreview(lead)}
+                            disabled={isGenerating || (depth === "NONE" || !qResult)}
+                            className="flex items-center gap-1.5 rounded-lg bg-[#0a1628] px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {isGenerating ? (
+                              <><Activity size={11} className="animate-spin" /> Generating…</>
+                            ) : (
+                              <><Sparkles size={11} /> Generate</>
+                            )}
+                          </button>
+                        )}
+                        {previewStatus && previewStatus !== "ARCHIVED" && (
+                          <button
+                            onClick={() => void generatePreview(lead, true)}
+                            disabled={isGenerating}
+                            className="flex items-center gap-1.5 rounded-lg border border-[#e2e8ee] px-2.5 py-1.5 text-[10px] font-semibold text-[#5d6d80] hover:bg-[#f5f7fa] disabled:opacity-40"
+                          >
+                            <Activity size={11} /> Regen
+                          </button>
+                        )}
+                        {previewStatus === "DRAFT" && (
+                          <button
+                            onClick={() => void markReady(lead.leadId)}
+                            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-bold text-white"
+                          >
+                            <Check size={11} /> Mark Ready
+                          </button>
+                        )}
+                        {previewStatus === "READY" && previewUrl && (
+                          <a
+                            href={`/dentist/${previewUrl}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 rounded-lg bg-[#00bce3] px-2.5 py-1.5 text-[10px] font-bold text-[#06273a]"
+                          >
+                            <ExternalLink size={11} /> Open Preview
+                          </a>
+                        )}
+                        {previewStatus && previewStatus !== "ARCHIVED" && (
+                          <button
+                            onClick={() => void archivePreview(lead.leadId)}
+                            className="flex items-center gap-1.5 rounded-lg border border-[#e2e8ee] px-2.5 py-1.5 text-[10px] font-semibold text-[#8793a4] hover:bg-[#f5f7fa]"
+                          >
+                            Archive
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {previewCandidates.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-xs text-[#8793a4]">
+                    No qualified leads available for preview generation yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LeadEngine() {
   const [activeView, setActiveView] = useState<ViewName>("Overview");
   const [leads, setLeads] = useState<Lead[]>(sampleLeads);
@@ -3465,10 +3732,14 @@ export function LeadEngine() {
           {activeView === "Qualified" && (
             <QualifiedView leads={leads} onOpenLead={setSelectedLead} />
           )}
+          {activeView === "Preview Queue" && (
+            <PreviewQueueView leads={leads} onOpenLead={setSelectedLead} />
+          )}
           {activeView !== "Overview" &&
             activeView !== "Leads" &&
             activeView !== "Website Audit" &&
-            activeView !== "Qualified" && (
+            activeView !== "Qualified" &&
+            activeView !== "Preview Queue" && (
               <EmptyView
                 view={activeView}
                 leads={leads}

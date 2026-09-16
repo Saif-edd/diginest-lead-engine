@@ -30,6 +30,13 @@ Use only the supplied verified lead context, objective audit fields, structured 
 
 The eight dimension scores are WEBSITE OPPORTUNITY points: 0 means no meaningful problem supported by evidence; the maximum means a serious opportunity. A positive deterministic signal proves presence only, not quality. Inspect presentation and hierarchy in the screenshot before calling a CTA, reviews, team, or services experience weak. Desktop evidence cannot prove mobile behavior; use the verified viewport field only as technical evidence.
 
+CRITICAL ANTI-HALLUCINATION GUARDS:
+1. Absence of a booking signal (booking=false) means absence of detected booking only; it does not automatically make the CTA quality CRITICAL.
+2. Do not use HTTP origin as evidence of visual design quality.
+3. Do not infer that Hero/Message Clarity is poor solely because an H1 tag is missing (h1=[]).
+4. Maintain LOW confidence for all visual dimensions when screenshotAvailable is false.
+5. Avoid absolute SEO claims (e.g., "Google cannot rank this") or strong unprovable causal claims (e.g., "destroys patient trust").
+
 Booking is not poor merely because a booking signal is absent. Reviews, team, services, and location presence are not quality scores by themselves. Keep the mainProblem to one strongest evidence-supported problem. Use qualificationDecision QUALIFY only when the opportunity gate is satisfied; otherwise use HOLD or SKIP. recommendedSections and all recommendations must use only factual business context and the observed problem.
 
 Every evidenceUsed item must reference a supplied field with source lead, audit, signal, or screenshot. If a claim has no valid supplied reference, leave evidenceUsed empty and lower confidence. Use only these field names: lead = name, category, address, rating, reviewCount, phone, email, socialUrl; audit = objectiveAuditStatus, requestedUrl, finalUrl, httpStatus, https, redirectCount, pageReachable, pageTitle, metaDescription, h1, canonical, robotsMeta, mobileViewport, schemaTypes, language, performance, auditTimestamp; signal = phone, whatsapp, email, booking, contactForm, reviews, team, services, location, googleMaps, social; screenshot = homepage. Do not use pageContent, url, content, screenshotUrl, or any other field name. For screenshot, use field homepage.`;

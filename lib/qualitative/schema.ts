@@ -20,7 +20,7 @@ const signalNames = new Set([
   "services", "location", "googleMaps", "social",
 ]);
 const leadFields = new Set([
-  "businessName", "category", "address", "city", "rating", "reviewCount",
+  "name", "category", "address", "city", "rating", "reviewCount",
   "phone", "email", "socialUrl",
 ]);
 const auditFields = new Set([

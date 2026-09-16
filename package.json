@@ -12,7 +12,8 @@
     "report:csv": "tsx scripts/import-report.ts",
     "calibrate:audit": "tsx scripts/calibrate-audit.ts",
     "calibrate:production": "tsx scripts/calibrate-production.ts",
-    "calibrate:qualitative": "tsx scripts/calibrate-qualitative.ts"
+    "calibrate:qualitative": "tsx scripts/calibrate-qualitative.ts",
+    "preview:generate": "tsx scripts/generate-previews.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
