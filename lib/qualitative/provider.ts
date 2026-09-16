@@ -108,7 +108,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
-        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
+        if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
           const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
           const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : rawBody.trim() || undefined;
           const retryAfter = response.headers.get("retry-after");
