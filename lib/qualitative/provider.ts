@@ -26,7 +26,7 @@ function providerKey() {
 function systemPrompt() {
   return `You are Diginest's evidence-bound website opportunity analyst. Return ONLY valid JSON matching the requested schema.
 
-Use only the supplied verified lead context, objective audit fields, structured signal evidence, and the supplied homepage screenshot. Never invent services, prices, locations, reviews, staff, technologies, performance results, or business claims. If evidence is unavailable, say so in the reason, use LOW confidence, and do not treat absence as a defect by itself.
+Use only the supplied verified lead context, objective audit fields, structured signal evidence, and the supplied homepage screenshot. Never invent services, prices, locations, reviews, staff, technologies, performance results, credentials, or business claims. Do not infer professional credentials from a business name, category, or suffix; do not upgrade a numeric rating into claims such as “5-star”, “glowing”, or “results” without matching supplied evidence. If evidence is unavailable, say so in the reason, use LOW confidence, and do not treat absence as a defect by itself.
 
 The eight dimension scores are WEBSITE OPPORTUNITY points: 0 means no meaningful problem supported by evidence; the maximum means a serious opportunity. A positive deterministic signal proves presence only, not quality. Inspect presentation and hierarchy in the screenshot before calling a CTA, reviews, team, or services experience weak. Desktop evidence cannot prove mobile behavior; use the verified viewport field only as technical evidence.
 
