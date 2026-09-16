@@ -20,7 +20,7 @@ function providerEndpoint() {
 }
 
 function providerKey() {
-  return process.env.QUALITATIVE_AI_API_KEY ?? process.env.OPENAI_API_KEY;
+  return process.env.QUALITATIVE_AI_API_KEY;
 }
 
 function systemPrompt() {
@@ -132,7 +132,6 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
 export function createQualitativeProvider(): QualitativeProvider {
   const apiKey = providerKey();
-  if (!apiKey) throw new QualitativeProviderError("QUALITATIVE_AI_API_KEY or OPENAI_API_KEY is not configured", "NOT_CONFIGURED");
+  if (!apiKey) throw new QualitativeProviderError("QUALITATIVE_AI_API_KEY is not configured", "NOT_CONFIGURED");
   return new OpenAICompatibleQualitativeProvider(apiKey);
 }
-
