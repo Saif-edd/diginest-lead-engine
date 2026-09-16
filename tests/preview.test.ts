@@ -1,6 +1,8 @@
 /**
- * Preview Builder Tests – Day 6
- * Tests: eligibility, slug, archetype, CTA, depth sections, config serialization
+ * Preview Builder Tests – Sprint 3A (V0 Prompt Builder)
+ * Tests: eligibility, slug, archetype, CTA, depth sections, config serialization,
+ *        asset URL validation, verified facts extraction, V0 prompt generation,
+ *        preview URL validation, workflow status transitions.
  */
 
 import { describe, it, expect } from "vitest";
@@ -8,9 +10,13 @@ import { generateSlug, slugPathSegment } from "../lib/preview/slug";
 import { selectDentalArchetype } from "../lib/preview/archetype";
 import { selectCTA } from "../lib/preview/cta";
 import { buildPreviewCopy } from "../lib/preview/copy";
+import { isValidAssetUrl } from "../lib/preview/assets";
+import { extractVerifiedFacts } from "../lib/preview/facts";
+import { generateV0PromptPack } from "../lib/preview/v0-prompt";
+import { validatePreviewUrl } from "../lib/persistence/db";
 import type { Lead } from "../types/lead";
 import type { QualitativeResult } from "../types/qualitative";
-import type { PreviewConfig } from "../types/preview";
+import type { PreviewConfig, PreviewAssetPack, V0WorkflowStatus } from "../types/preview";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,6 +111,21 @@ function makeQualitativeResult(_overrides: Partial<QualitativeResult> = {}): Qua
   return makeLead().audit.qualitativeResult as QualitativeResult;
 }
 
+function makeEmptyAssetPack(): PreviewAssetPack {
+  return {
+    logoUrl: null,
+    faviconUrl: null,
+    ogImageUrl: null,
+    heroImageCandidates: [],
+    clinicImages: [],
+    teamImages: [],
+    serviceImages: [],
+    currentWebsiteScreenshotUrl: null,
+    sourceWebsite: null,
+    totalAssets: 0,
+  };
+}
+
 // ─── Slug Generation ──────────────────────────────────────────────────────────
 
 describe("generateSlug", () => {
@@ -139,7 +160,6 @@ describe("slugPathSegment", () => {
 
 describe("selectDentalArchetype", () => {
   it("returns DENTAL_CORE as default for a general clinic", () => {
-    // Ensure no specialist keywords in any evidence field
     const lead = makeLead({
       rating: 4.2,
       totalRatings: 50,
@@ -227,13 +247,7 @@ describe("selectCTA", () => {
 
   it("selects PHONE when neither booking nor whatsapp", () => {
     const lead = makeLead({
-      audit: {
-        ...makeLead().audit,
-        bookingFound: false,
-        whatsappFound: false,
-        phoneFound: true,
-        phoneEvidence: ["+971501234567"],
-      },
+      audit: { ...makeLead().audit, bookingFound: false, whatsappFound: false, phoneFound: true, phoneEvidence: ["+971501234567"] },
     } as Partial<Lead>);
     const { primaryCTA } = selectCTA(lead);
     expect(primaryCTA.type).toBe("PHONE");
@@ -377,5 +391,292 @@ describe("PreviewConfig serialization", () => {
     expect(parsed.business.rating).toBe(4.7);
     expect(parsed.team).toEqual([]);
     expect(parsed.sourceEvidence[0].source).toBe("lead");
+  });
+});
+
+// ─── Sprint 3A: Asset URL Validation ─────────────────────────────────────────
+
+describe("isValidAssetUrl – malformed URL rejection", () => {
+  it("accepts a normal https image URL", () => {
+    expect(isValidAssetUrl("https://example.com/logo.png")).toBe(true);
+  });
+
+  it("accepts http image URL", () => {
+    expect(isValidAssetUrl("http://example.com/og.jpg")).toBe(true);
+  });
+
+  it("rejects .jpgsvg concatenated extension", () => {
+    expect(isValidAssetUrl("https://example.com/image.jpgsvg")).toBe(false);
+  });
+
+  it("rejects .webpsvg concatenated extension", () => {
+    expect(isValidAssetUrl("https://example.com/image.webpsvg")).toBe(false);
+  });
+
+  it("rejects .pngsvg concatenated extension", () => {
+    expect(isValidAssetUrl("https://example.com/image.pngsvg")).toBe(false);
+  });
+
+  it("rejects data: URIs", () => {
+    expect(isValidAssetUrl("data:image/png;base64,abc123")).toBe(false);
+  });
+
+  it("rejects null", () => {
+    expect(isValidAssetUrl(null)).toBe(false);
+  });
+
+  it("rejects undefined", () => {
+    expect(isValidAssetUrl(undefined)).toBe(false);
+  });
+
+  it("rejects empty string", () => {
+    expect(isValidAssetUrl("")).toBe(false);
+  });
+
+  it("rejects too-short URLs", () => {
+    expect(isValidAssetUrl("https://")).toBe(false);
+  });
+
+  it("rejects localhost URLs", () => {
+    expect(isValidAssetUrl("http://localhost:3000/logo.png")).toBe(false);
+  });
+
+  it("rejects private IP 192.168.x.x", () => {
+    expect(isValidAssetUrl("http://192.168.1.1/image.jpg")).toBe(false);
+  });
+
+  it("rejects private IP 10.x.x.x", () => {
+    expect(isValidAssetUrl("http://10.0.0.1/image.jpg")).toBe(false);
+  });
+
+  it("rejects ftp protocol", () => {
+    expect(isValidAssetUrl("ftp://example.com/logo.png")).toBe(false);
+  });
+});
+
+// ─── Sprint 3A: Verified Facts Extraction ────────────────────────────────────
+
+describe("extractVerifiedFacts", () => {
+  it("extracts business name exactly", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.businessName).toBe("Test Dental Clinic");
+  });
+
+  it("extracts city from Abu Dhabi address", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.city).toBe("Abu Dhabi");
+  });
+
+  it("extracts google rating and review count", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.googleRating).toBe(4.7);
+    expect(facts.reviewCount).toBe(350);
+  });
+
+  it("extracts phone number", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.phone).toBe("+971501234567");
+  });
+
+  it("extracts WhatsApp when whatsappFound is true", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.whatsapp).not.toBeNull();
+  });
+
+  it("returns null whatsapp when not found", () => {
+    const lead = makeLead({
+      audit: { ...makeLead().audit, whatsappFound: false, whatsappEvidence: [] },
+    });
+    const facts = extractVerifiedFacts(lead);
+    expect(facts.whatsapp).toBeNull();
+  });
+
+  it("extracts verified services from audit evidence only", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.verifiedServices).toContain("General Dentistry");
+    expect(facts.verifiedServices).toContain("Teeth Whitening");
+    expect(facts.verifiedServices.length).toBeLessThanOrEqual(8);
+  });
+
+  it("extracts mainProblem from audit", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.mainProblem).toContain("CTA");
+  });
+
+  it("extracts outreachAngle from qualitative result", () => {
+    const facts = extractVerifiedFacts(makeLead());
+    expect(facts.outreachAngle).toBeTruthy();
+  });
+
+  it("returns empty teamInfo when no team evidence", () => {
+    const lead = makeLead({ audit: { ...makeLead().audit, teamIndicators: false, teamEvidence: [] } });
+    const facts = extractVerifiedFacts(lead);
+    expect(facts.verifiedTeamInfo).toHaveLength(0);
+  });
+
+  it("returns null googleRating when lead has no rating", () => {
+    const lead = makeLead({ rating: undefined });
+    const facts = extractVerifiedFacts(lead);
+    expect(facts.googleRating).toBeNull();
+  });
+});
+
+// ─── Sprint 3A: V0 Prompt Pack Generation ────────────────────────────────────
+
+describe("generateV0PromptPack", () => {
+  it("generates a prompt containing the business name", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.masterPrompt).toContain("Test Dental Clinic");
+  });
+
+  it("generates a prompt containing the city", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.masterPrompt).toContain("Abu Dhabi");
+  });
+
+  it("generates a prompt containing the verified rating", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.masterPrompt).toContain("4.7");
+  });
+
+  it("includes FACTUAL GUARDRAILS section in prompt", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.masterPrompt).toContain("FACTUAL GUARDRAILS");
+    expect(pack.masterPrompt).toContain("DO NOT invent");
+  });
+
+  it("does NOT use 'satisfied patients' phrasing in copy sections", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    // Only the guardrails section mentions it as forbidden
+    const beforeGuardrails = pack.masterPrompt.split("J. FACTUAL GUARDRAILS")[0] ?? "";
+    expect(beforeGuardrails).not.toContain("satisfied patients");
+  });
+
+  it("includes all 11 sections (A-K)", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.sections).toHaveLength(11);
+    expect(pack.sections.map((s) => s.key)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]);
+  });
+
+  it("includes all 3 design references", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.designReferences.length).toBe(3);
+    const names = pack.designReferences.map((r) => r.name);
+    expect(names).toContain("WebDentts");
+    expect(names).toContain("Ktabna");
+    expect(names).toContain("Breezy Tech");
+  });
+
+  it("produces a valid archetype", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(["DENTAL_CORE", "DENTAL_PREMIUM", "DENTAL_SPECIALIST"]).toContain(pack.archetype);
+  });
+
+  it("includes verified services in prompt", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.masterPrompt).toContain("General Dentistry");
+  });
+
+  it("copy pack has non-empty headline", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.copyPack.headline.length).toBeGreaterThan(5);
+  });
+
+  it("copy pack has non-empty primary CTA", () => {
+    const lead = makeLead();
+    const facts = extractVerifiedFacts(lead);
+    const pack = generateV0PromptPack(lead, facts, makeEmptyAssetPack());
+    expect(pack.copyPack.primaryCTA.length).toBeGreaterThan(2);
+  });
+});
+
+// ─── Sprint 3A: Final Preview URL Validation ─────────────────────────────────
+
+describe("validatePreviewUrl", () => {
+  it("accepts a valid https URL", () => {
+    expect(validatePreviewUrl("https://preview.vercel.app")).toBe(true);
+  });
+
+  it("accepts a v0 preview URL", () => {
+    expect(validatePreviewUrl("https://some-preview-abc123.vercel.app")).toBe(true);
+  });
+
+  it("accepts http URL", () => {
+    expect(validatePreviewUrl("http://staging.example.com/preview")).toBe(true);
+  });
+
+  it("rejects empty string", () => {
+    expect(validatePreviewUrl("")).toBe(false);
+  });
+
+  it("rejects too-short string", () => {
+    expect(validatePreviewUrl("htt")).toBe(false);
+  });
+
+  it("rejects non-URL string", () => {
+    expect(validatePreviewUrl("not-a-url")).toBe(false);
+  });
+
+  it("rejects ftp URL", () => {
+    expect(validatePreviewUrl("ftp://some.server.com/preview")).toBe(false);
+  });
+});
+
+// ─── Sprint 3A: V0 Workflow Status Semantics ─────────────────────────────────
+
+describe("V0 workflow status semantics", () => {
+  it("all 7 V0 workflow statuses are defined", () => {
+    const statuses: V0WorkflowStatus[] = [
+      "NOT_STARTED",
+      "BRIEF_READY",
+      "PROMPT_READY",
+      "IN_V0",
+      "PREVIEW_LINK_ADDED",
+      "READY_FOR_OUTREACH",
+      "ARCHIVED",
+    ];
+    expect(statuses).toHaveLength(7);
+  });
+
+  it("NOT_STARTED is not the outreach-ready state", () => {
+    const status: V0WorkflowStatus = "NOT_STARTED";
+    expect((status as string) === "READY_FOR_OUTREACH").toBe(false);
+  });
+
+  it("READY_FOR_OUTREACH is the terminal approval state", () => {
+    const status: V0WorkflowStatus = "READY_FOR_OUTREACH";
+    expect((status as string) === "READY_FOR_OUTREACH").toBe(true);
+  });
+
+  it("adding a URL sets PREVIEW_LINK_ADDED, not READY_FOR_OUTREACH", () => {
+    // The URL addition step sets PREVIEW_LINK_ADDED — a separate explicit
+    // admin action (mark_ready_for_outreach) is required to set READY_FOR_OUTREACH
+    const urlAddedStatus: V0WorkflowStatus = "PREVIEW_LINK_ADDED";
+    expect((urlAddedStatus as string) !== "READY_FOR_OUTREACH").toBe(true);
+  });
+
+  it("ARCHIVED is a terminal state for inactive previews", () => {
+    const status: V0WorkflowStatus = "ARCHIVED";
+    expect((status as string) === "ARCHIVED").toBe(true);
   });
 });

@@ -3,7 +3,15 @@ import type { Lead, WorkspaceMode } from "@/types/lead";
 import type { ImportReport } from "@/types/import";
 import type { WebsiteAudit } from "@/types/audit";
 import type { QualitativeResult } from "@/types/qualitative";
-import type { PreviewRecord, PreviewConfig, PreviewStatus } from "@/types/preview";
+import type {
+  PreviewRecord,
+  PreviewConfig,
+  PreviewStatus,
+  V0WorkflowStatus,
+  VerifiedFactsBlock,
+  PreviewAssetPack,
+  V0PromptPack,
+} from "@/types/preview";
 import { leadIdentity } from "@/lib/normalization";
 import { automaticQualificationFor, calculateLeadScore, effectiveQualificationFor } from "@/lib/scoring";
 import { recoverStaleAudit } from "@/lib/audit/state";
@@ -23,19 +31,58 @@ function database() {
 async function ensureSchema() {
   if (!schemaPromise) {
     const db = database();
-    schemaPromise = db.batch([
-      { sql: `CREATE TABLE IF NOT EXISTS leads (lead_id TEXT PRIMARY KEY, workspace_mode TEXT NOT NULL, lead_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
-      { sql: `CREATE TABLE IF NOT EXISTS imports (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_mode TEXT NOT NULL, source_file TEXT, report_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
-      { sql: `CREATE TABLE IF NOT EXISTS audit_jobs (lead_id TEXT PRIMARY KEY, objective_status TEXT NOT NULL, qualitative_status TEXT NOT NULL, started_at TEXT, completed_at TEXT, heartbeat_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, audit_json TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
-      { sql: `CREATE TABLE IF NOT EXISTS audit_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, audit_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
-      { sql: `CREATE TABLE IF NOT EXISTS qualitative_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, result_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
-      { sql: `CREATE TABLE IF NOT EXISTS preview_records (id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'NOT_STARTED', vertical TEXT NOT NULL DEFAULT 'DENTAL', archetype TEXT NOT NULL, archetype_confidence TEXT NOT NULL, preview_depth TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, ready_at TEXT)`, args: [] },
-      { sql: `CREATE INDEX IF NOT EXISTS leads_mode_idx ON leads(workspace_mode)`, args: [] },
-      { sql: `CREATE INDEX IF NOT EXISTS audit_results_lead_idx ON audit_results(lead_id)`, args: [] },
-      { sql: `CREATE INDEX IF NOT EXISTS qualitative_results_lead_idx ON qualitative_results(lead_id)`, args: [] },
-      { sql: `CREATE INDEX IF NOT EXISTS preview_records_lead_idx ON preview_records(lead_id)`, args: [] },
-      { sql: `CREATE INDEX IF NOT EXISTS preview_records_slug_idx ON preview_records(slug)`, args: [] },
-    ]).then(() => undefined);
+    schemaPromise = (async () => {
+      // Core tables
+      await db.batch([
+        { sql: `CREATE TABLE IF NOT EXISTS leads (lead_id TEXT PRIMARY KEY, workspace_mode TEXT NOT NULL, lead_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
+        { sql: `CREATE TABLE IF NOT EXISTS imports (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_mode TEXT NOT NULL, source_file TEXT, report_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
+        { sql: `CREATE TABLE IF NOT EXISTS audit_jobs (lead_id TEXT PRIMARY KEY, objective_status TEXT NOT NULL, qualitative_status TEXT NOT NULL, started_at TEXT, completed_at TEXT, heartbeat_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0, audit_json TEXT NOT NULL, updated_at TEXT NOT NULL)`, args: [] },
+        { sql: `CREATE TABLE IF NOT EXISTS audit_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, audit_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
+        { sql: `CREATE TABLE IF NOT EXISTS qualitative_results (id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, result_json TEXT NOT NULL, created_at TEXT NOT NULL)`, args: [] },
+        {
+          sql: `CREATE TABLE IF NOT EXISTS preview_records (
+            id TEXT PRIMARY KEY,
+            lead_id TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+            vertical TEXT NOT NULL DEFAULT 'DENTAL',
+            archetype TEXT NOT NULL,
+            archetype_confidence TEXT NOT NULL,
+            preview_depth TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            ready_at TEXT
+          )`,
+          args: [],
+        },
+        { sql: `CREATE INDEX IF NOT EXISTS leads_mode_idx ON leads(workspace_mode)`, args: [] },
+        { sql: `CREATE INDEX IF NOT EXISTS audit_results_lead_idx ON audit_results(lead_id)`, args: [] },
+        { sql: `CREATE INDEX IF NOT EXISTS qualitative_results_lead_idx ON qualitative_results(lead_id)`, args: [] },
+        { sql: `CREATE INDEX IF NOT EXISTS preview_records_lead_idx ON preview_records(lead_id)`, args: [] },
+        { sql: `CREATE INDEX IF NOT EXISTS preview_records_slug_idx ON preview_records(slug)`, args: [] },
+      ]);
+
+      // Sprint 3A additive migration – new columns on preview_records
+      // ALTER TABLE IF NOT EXISTS is not supported by SQLite; use try/catch per column
+      const sprint3aColumns = [
+        `ALTER TABLE preview_records ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'NOT_STARTED'`,
+        `ALTER TABLE preview_records ADD COLUMN final_preview_url TEXT`,
+        `ALTER TABLE preview_records ADD COLUMN preview_provider TEXT`,
+        `ALTER TABLE preview_records ADD COLUMN preview_added_at TEXT`,
+        `ALTER TABLE preview_records ADD COLUMN v0_prompt_json TEXT`,
+        `ALTER TABLE preview_records ADD COLUMN asset_pack_json TEXT`,
+        `ALTER TABLE preview_records ADD COLUMN verified_facts_json TEXT`,
+      ];
+
+      for (const sql of sprint3aColumns) {
+        try {
+          await db.execute({ sql, args: [] });
+        } catch {
+          // Column already exists – safe to ignore duplicate-column error
+        }
+      }
+    })();
   }
   await schemaPromise;
 }
@@ -168,35 +215,89 @@ export async function getQualitativeResult(idempotencyKey: string) {
 }
 
 // ============================================================
-// Preview Records
+// Preview Records – Sprint 3A
 // ============================================================
 
+function parseJsonSafe<T>(val: unknown): T | null {
+  if (!val) return null;
+  try {
+    return JSON.parse(String(val)) as T;
+  } catch {
+    return null;
+  }
+}
+
 function rowToPreviewRecord(row: Record<string, unknown>): PreviewRecord {
+  // Determine workflowStatus: use workflow_status column if it exists and is a known V0 status,
+  // otherwise derive from legacy status for backward compat
+  const rawWorkflow = String(row.workflow_status ?? "NOT_STARTED");
+  const workflowStatus: V0WorkflowStatus = [
+    "NOT_STARTED",
+    "BRIEF_READY",
+    "PROMPT_READY",
+    "IN_V0",
+    "PREVIEW_LINK_ADDED",
+    "READY_FOR_OUTREACH",
+    "ARCHIVED",
+  ].includes(rawWorkflow)
+    ? (rawWorkflow as V0WorkflowStatus)
+    : "NOT_STARTED";
+
   return {
     id: String(row.id),
     leadId: String(row.lead_id),
     slug: String(row.slug),
     status: String(row.status) as PreviewStatus,
+    workflowStatus,
     vertical: "DENTAL",
     archetype: String(row.archetype) as PreviewRecord["archetype"],
     archetypeConfidence: String(row.archetype_confidence) as PreviewRecord["archetypeConfidence"],
     previewDepth: String(row.preview_depth) as PreviewRecord["previewDepth"],
-    configJson: JSON.parse(String(row.config_json)) as PreviewConfig,
+    configJson: parseJsonSafe<PreviewConfig>(row.config_json) ?? ({} as PreviewConfig),
+    verifiedFacts: parseJsonSafe<VerifiedFactsBlock>(row.verified_facts_json),
+    assetPack: parseJsonSafe<PreviewAssetPack>(row.asset_pack_json),
+    v0PromptPack: parseJsonSafe<V0PromptPack>(row.v0_prompt_json),
+    finalPreviewUrl: row.final_preview_url ? String(row.final_preview_url) : null,
+    previewProvider: row.preview_provider
+      ? (String(row.preview_provider) as PreviewRecord["previewProvider"])
+      : null,
+    previewAddedAt: row.preview_added_at ? String(row.preview_added_at) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     readyAt: row.ready_at ? String(row.ready_at) : null,
   };
 }
 
-export async function upsertPreviewRecord(record: Omit<PreviewRecord, "createdAt" | "updatedAt" | "readyAt">): Promise<PreviewRecord> {
+// ---------------------------------------------------------------
+// URL validation for final preview URL
+// ---------------------------------------------------------------
+
+export function validatePreviewUrl(url: string): boolean {
+  if (!url || url.length < 10 || url.length > 500) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------
+// CRUD operations
+// ---------------------------------------------------------------
+
+export async function upsertPreviewRecord(
+  record: Omit<PreviewRecord, "createdAt" | "updatedAt" | "readyAt" | "verifiedFacts" | "assetPack" | "v0PromptPack" | "finalPreviewUrl" | "previewProvider" | "previewAddedAt">,
+): Promise<PreviewRecord> {
   await ensureSchema();
   const timestamp = now();
   await database().execute({
-    sql: `INSERT INTO preview_records (id, lead_id, slug, status, vertical, archetype, archetype_confidence, preview_depth, config_json, created_at, updated_at, ready_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    sql: `INSERT INTO preview_records (id, lead_id, slug, status, workflow_status, vertical, archetype, archetype_confidence, preview_depth, config_json, created_at, updated_at, ready_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
           ON CONFLICT(id) DO UPDATE SET
             slug = excluded.slug,
             status = excluded.status,
+            workflow_status = excluded.workflow_status,
             archetype = excluded.archetype,
             archetype_confidence = excluded.archetype_confidence,
             preview_depth = excluded.preview_depth,
@@ -207,6 +308,7 @@ export async function upsertPreviewRecord(record: Omit<PreviewRecord, "createdAt
       record.leadId,
       record.slug,
       record.status,
+      record.workflowStatus,
       record.vertical,
       record.archetype,
       record.archetypeConfidence,
@@ -220,6 +322,21 @@ export async function upsertPreviewRecord(record: Omit<PreviewRecord, "createdAt
   return rowToPreviewRecord(inserted.rows[0] as Record<string, unknown>);
 }
 
+/** Update only the workflow status (and optionally ready_at). */
+export async function updatePreviewWorkflowStatus(
+  id: string,
+  workflowStatus: V0WorkflowStatus,
+): Promise<void> {
+  await ensureSchema();
+  const timestamp = now();
+  const readyAt = workflowStatus === "READY_FOR_OUTREACH" ? timestamp : null;
+  await database().execute({
+    sql: "UPDATE preview_records SET workflow_status = ?, status = ?, updated_at = ?, ready_at = COALESCE(?, ready_at) WHERE id = ?",
+    args: [workflowStatus, workflowStatus, timestamp, readyAt, id],
+  });
+}
+
+/** Legacy status update – kept for backward compat. */
 export async function updatePreviewStatus(id: string, status: PreviewStatus): Promise<void> {
   await ensureSchema();
   const timestamp = now();
@@ -230,15 +347,75 @@ export async function updatePreviewStatus(id: string, status: PreviewStatus): Pr
   });
 }
 
+/** Store the verified facts + asset pack (sets BRIEF_READY). */
+export async function setPreviewBrief(
+  id: string,
+  verifiedFacts: VerifiedFactsBlock,
+  assetPack: PreviewAssetPack,
+): Promise<void> {
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: "UPDATE preview_records SET verified_facts_json = ?, asset_pack_json = ?, workflow_status = 'BRIEF_READY', status = 'BRIEF_READY', updated_at = ? WHERE id = ?",
+    args: [JSON.stringify(verifiedFacts), JSON.stringify(assetPack), timestamp, id],
+  });
+}
+
+/** Store the V0 prompt pack (sets PROMPT_READY). */
+export async function setPreviewV0Pack(
+  id: string,
+  v0PromptPack: V0PromptPack,
+): Promise<void> {
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: "UPDATE preview_records SET v0_prompt_json = ?, workflow_status = 'PROMPT_READY', status = 'PROMPT_READY', updated_at = ? WHERE id = ?",
+    args: [JSON.stringify(v0PromptPack), timestamp, id],
+  });
+}
+
+/** Validate and store the final preview URL (sets PREVIEW_LINK_ADDED). */
+export async function setFinalPreviewUrl(
+  id: string,
+  url: string,
+  provider: "V0" | "LEGACY" = "V0",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!validatePreviewUrl(url)) {
+    return { ok: false, error: "Invalid URL: must be a valid http(s) URL under 500 characters" };
+  }
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: "UPDATE preview_records SET final_preview_url = ?, preview_provider = ?, preview_added_at = ?, workflow_status = 'PREVIEW_LINK_ADDED', status = 'PREVIEW_LINK_ADDED', updated_at = ? WHERE id = ?",
+    args: [url, provider, timestamp, timestamp, id],
+  });
+  return { ok: true };
+}
+
+/** Mark ready for outreach – explicit admin-only action. Does NOT auto-trigger. */
+export async function markReadyForOutreach(id: string): Promise<void> {
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: "UPDATE preview_records SET workflow_status = 'READY_FOR_OUTREACH', status = 'READY_FOR_OUTREACH', ready_at = ?, updated_at = ? WHERE id = ?",
+    args: [timestamp, timestamp, id],
+  });
+}
+
 export async function findPreviewByLeadId(leadId: string): Promise<PreviewRecord | null> {
   await ensureSchema();
   const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE lead_id = ? ORDER BY created_at DESC LIMIT 1", args: [leadId] });
   return result.rows[0] ? rowToPreviewRecord(result.rows[0] as Record<string, unknown>) : null;
 }
 
+export async function findPreviewById(id: string): Promise<PreviewRecord | null> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE id = ?", args: [id] });
+  return result.rows[0] ? rowToPreviewRecord(result.rows[0] as Record<string, unknown>) : null;
+}
+
 export async function findPreviewBySlug(slug: string): Promise<PreviewRecord | null> {
   await ensureSchema();
-  // slug stored as full path e.g. "/dentist/vision-dental-abu-dhabi"
   const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE slug = ?", args: [slug] });
   return result.rows[0] ? rowToPreviewRecord(result.rows[0] as Record<string, unknown>) : null;
 }

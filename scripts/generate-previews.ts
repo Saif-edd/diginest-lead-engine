@@ -74,6 +74,7 @@ async function main() {
         leadId: lead.leadId,
         slug: config.slug,
         status: "DRAFT",
+        workflowStatus: "NOT_STARTED",
         vertical: "DENTAL",
         archetype: config.archetype,
         archetypeConfidence: config.archetypeConfidence,
