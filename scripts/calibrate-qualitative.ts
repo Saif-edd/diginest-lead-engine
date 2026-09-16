@@ -32,7 +32,7 @@ function signalProfile(lead: Lead) {
 }
 
 function selectLeads(leads: Lead[]) {
-  const candidates = leads.filter((lead) => lead.hasWebsite && lead.website && (lead.audit.objectiveAuditStatus ?? lead.audit.status) === "COMPLETE");
+  const candidates = leads.filter((lead) => lead.hasWebsite && lead.website && (lead.audit.objectiveAuditStatus ?? lead.audit.status) === "COMPLETE" && lead.audit.qualitativeAuditStatus !== "COMPLETE");
   const quotas: Record<string, number> = { dental: 8, physio_medical: 6, wellness_beauty: 4, other: 2 };
   const selected: Lead[] = [];
   const seenHosts = new Set<string>();
