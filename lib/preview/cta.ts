@@ -14,14 +14,16 @@
 import type { Lead } from "@/types/lead";
 import type { PreviewCTA, CTAType } from "@/types/preview";
 
-function buildWhatsAppHref(number: string): string {
-  // Normalise: strip non-digits, add international prefix if needed
+function buildWhatsAppHref(number: string): string | null {
   const digits = number.replace(/\D/g, "");
+  if (digits.length < 6) return null;
   return `https://wa.me/${digits}`;
 }
 
-function buildPhoneHref(number: string): string {
-  return `tel:${number.replace(/\s/g, "")}`;
+function buildPhoneHref(number: string): string | null {
+  const match = number.match(/\+?\d[\d\s-]{6,}/);
+  if (!match) return null;
+  return `tel:${match[0].replace(/\s/g, "")}`;
 }
 
 interface CTAResult {
@@ -40,13 +42,8 @@ export function selectCTA(lead: Lead): CTAResult {
     // Try to extract a URL from evidence
     const bookingUrl = bookingEvidence
       .map((e) => {
-        try {
-          // Evidence may be a URL or descriptive string
-          if (e.startsWith("http")) return e;
-        } catch {
-          /* ignore */
-        }
-        return null;
+        const match = e.match(/https?:\/\/[^\s]+/);
+        return match ? match[0] : null;
       })
       .find(Boolean);
 
@@ -65,11 +62,14 @@ export function selectCTA(lead: Lead): CTAResult {
       : null;
 
   if (whatsappNumber) {
-    candidates.push({
-      type: "WHATSAPP",
-      label: "WhatsApp Us",
-      href: buildWhatsAppHref(whatsappNumber),
-    });
+    const waHref = buildWhatsAppHref(whatsappNumber);
+    if (waHref) {
+      candidates.push({
+        type: "WHATSAPP",
+        label: "WhatsApp Us",
+        href: waHref,
+      });
+    }
   }
 
   // 3. Phone
@@ -77,11 +77,14 @@ export function selectCTA(lead: Lead): CTAResult {
     lead.audit.phoneFound ? (lead.audit.phoneEvidence?.[0] ?? lead.phone ?? null) : lead.phone ?? null;
 
   if (phoneNumber) {
-    candidates.push({
-      type: "PHONE",
-      label: "Call the Clinic",
-      href: buildPhoneHref(phoneNumber),
-    });
+    const phHref = buildPhoneHref(phoneNumber);
+    if (phHref) {
+      candidates.push({
+        type: "PHONE",
+        label: "Call the Clinic",
+        href: phHref,
+      });
+    }
   }
 
   if (candidates.length === 0) {

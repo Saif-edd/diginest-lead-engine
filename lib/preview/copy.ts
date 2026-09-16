@@ -121,18 +121,27 @@ function buildServiceCards(lead: Lead): ServiceCard[] {
   const raw = lead.audit.servicesEvidence ?? [];
   if (raw.length === 0) return [];
 
-  // Clean up evidence strings: remove HTML/URL fragments, deduplicate
+  // Clean up evidence strings: remove HTML/URL fragments, leading/trailing dashes, deduplicate
   const cleaned = raw
     .map((e) =>
       e
         .replace(/<[^>]+>/g, "")
         .replace(/https?:\/\/\S+/g, "")
-        .trim(),
+        .replace(/^[-\s]+|[-\s]+$/g, "")
     )
-    .filter((e) => e.length > 1 && e.length < 80)
+    .filter((e) => e.length > 2 && e.length <= 45)
     .slice(0, 6);
 
-  return cleaned.map((name) => ({ name }));
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const c of cleaned) {
+    if (!seen.has(c.toLowerCase())) {
+      unique.push(c);
+      seen.add(c.toLowerCase());
+    }
+  }
+
+  return unique.map((name) => ({ name }));
 }
 
 /** Choose sections based on depth and available evidence. */
