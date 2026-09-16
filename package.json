@@ -13,7 +13,8 @@
     "calibrate:audit": "tsx scripts/calibrate-audit.ts",
     "calibrate:production": "tsx scripts/calibrate-production.ts",
     "calibrate:qualitative": "tsx scripts/calibrate-qualitative.ts",
-    "preview:generate": "tsx scripts/generate-previews.ts"
+    "preview:generate": "tsx --env-file=.env.local scripts/generate-previews.ts",
+    "apply:manual-reviews": "tsx --env-file=.env.local scripts/apply-manual-reviews.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

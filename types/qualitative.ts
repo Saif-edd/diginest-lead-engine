@@ -75,6 +75,8 @@ export interface QualitativeResult {
   secondaryProblems: QualitativeSecondaryProblem[];
   qualificationDecision: QualificationDecision;
   qualificationReason: string;
+  /** AI = model-generated; MANUAL_REVIEW = human-reviewed Sprint 2B calibration decision */
+  qualificationDecisionSource?: "AI" | "MANUAL_REVIEW";
   commercialProfile: QualitativeScoredComponent;
   commercialProfileScore: number;
   previewPotential: QualitativePreviewPotential;

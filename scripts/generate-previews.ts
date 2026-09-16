@@ -9,11 +9,10 @@
  * Then prints the public URLs for the ones marked READY.
  */
 
-import "dotenv/config";
-import { loadProductionWorkspace, upsertPreviewRecord, updatePreviewStatus } from "@/lib/persistence/db";
-import { buildPreviewConfig } from "@/lib/preview/builder";
+import { loadProductionWorkspace, upsertPreviewRecord, updatePreviewStatus } from "../lib/persistence/db";
+import { buildPreviewConfig } from "../lib/preview/builder";
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "https://diginest-lead-engine.vercel.app";
+const BASE_URL = (process.env.DIGINEST_PRODUCTION_URL ?? "https://diginest-lead-engine.vercel.app").replace(/\/$/, "");
 
 // Lead names to target for test previews
 const TARGET_LEADS = [
