@@ -31,9 +31,6 @@ function TopContactBar({ phone, location }: { phone: string | null; location?: P
             <MapPin size={13} className="text-blue-400" /> {location.address.split(',')[0]}
           </span>
         )}
-        <span className="flex items-center gap-2 text-slate-200">
-          <Clock size={13} className="text-blue-400" /> Mon-Sat: 9:00 AM - 8:00 PM
-        </span>
         <div className="ml-auto">
           {phone && (
             <a href={`tel:${phone}`} className="flex items-center gap-2 font-semibold text-white hover:text-blue-300 transition-colors">
@@ -46,15 +43,16 @@ function TopContactBar({ phone, location }: { phone: string | null; location?: P
   );
 }
 
-function Header({ businessName, primaryCTA }: { businessName: string; primaryCTA: PreviewConfig["hero"]["primaryCTA"] }) {
+function Header({ businessName, primaryCTA, logoUrl }: { businessName: string; primaryCTA: PreviewConfig["hero"]["primaryCTA"]; logoUrl?: string | null }) {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-sm">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm ring-1 ring-blue-700/10">
-            <Stethoscope size={22} />
-          </div>
-          <span className="text-[19px] font-bold tracking-tight text-[#0A1628]">{businessName}</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={businessName} className="h-11 w-auto object-contain" />
+          ) : (
+            <span className="text-[19px] font-bold tracking-tight text-[#0A1628] leading-tight max-w-[200px] sm:max-w-none">{businessName}</span>
+          )}
         </div>
         {primaryCTA.href && (
           <a
@@ -122,7 +120,6 @@ function Hero({ hero, archetype }: { hero: PreviewConfig["hero"]; archetype: str
           ) : (
             <div className="aspect-[4/3] w-full overflow-hidden rounded-3xl shadow-xl ring-1 ring-slate-900/5 relative flex items-center justify-center bg-slate-50">
               <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100/50 via-slate-50 to-white" />
-              <Stethoscope size={96} className="text-blue-200/40 relative z-10" />
             </div>
           )}
         </div>
@@ -181,7 +178,8 @@ function Services({ services }: { services: ServiceCard[] }) {
   );
 }
 
-function WhyChooseUs() {
+function Reputation({ business }: { business: PreviewConfig["business"] }) {
+  if (!business.rating || !business.reviewCount) return null;
   return (
     <section className="bg-white py-24 sm:py-32">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
@@ -189,28 +187,19 @@ function WhyChooseUs() {
           <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-blue-600">Our standard</p>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#0A1628] sm:text-4xl">Why choose our clinic</h2>
           <p className="mt-4 text-lg text-slate-600">
-            We believe in pain-free, transparent, and high-quality dentistry. Every treatment is designed with your comfort in mind.
+            We believe in transparent and high-quality dentistry. Every treatment is designed with your comfort in mind.
           </p>
         </div>
         <div className="mx-auto mt-16 max-w-2xl sm:mt-20 lg:mt-24 lg:max-w-4xl">
-          <dl className="grid max-w-xl grid-cols-1 gap-x-8 gap-y-10 lg:max-w-none lg:grid-cols-2 lg:gap-y-16">
+          <dl className="grid max-w-xl grid-cols-1 gap-x-8 gap-y-10 lg:max-w-none lg:grid-cols-1 lg:gap-y-16 mx-auto">
             <div className="relative pl-16">
               <dt className="text-base font-bold text-[#0A1628]">
                 <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600">
-                  <ShieldCheck className="h-6 w-6 text-white" aria-hidden="true" />
+                  <Star className="h-6 w-6 text-yellow-400 fill-current" aria-hidden="true" />
                 </div>
                 Trusted & Verified
               </dt>
-              <dd className="mt-2 text-base leading-7 text-slate-600">Our reputation is built on hundreds of successful treatments and satisfied patients.</dd>
-            </div>
-            <div className="relative pl-16">
-              <dt className="text-base font-bold text-[#0A1628]">
-                <div className="absolute left-0 top-0 flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600">
-                  <Stethoscope className="h-6 w-6 text-white" aria-hidden="true" />
-                </div>
-                Modern Technology
-              </dt>
-              <dd className="mt-2 text-base leading-7 text-slate-600">We use the latest diagnostic and treatment tools for precise, pain-free dentistry.</dd>
+              <dd className="mt-2 text-base leading-7 text-slate-600">Rated {business.rating} stars by over {business.reviewCount} satisfied patients in {business.city}.</dd>
             </div>
           </dl>
         </div>
@@ -336,23 +325,23 @@ export default function DentalPreviewPage({
 }: {
   config: PreviewConfig;
 }) {
-  const { hero, business, trustItems, services, location, sections, archetype } = config;
+  const { hero, business, trustItems, services, location, sections, archetype, logoUrl } = config;
 
-  const showServices = sections.includes("services") && services.length > 0;
+  const showServices = sections.includes("services") && services && services.length > 0;
   const showLocation = sections.includes("location");
   const showFinalCTA = config.previewDepth === "STRONG" || config.previewDepth === "PREMIUM";
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
       <TopContactBar phone={business.phone} location={location} />
-      <Header businessName={business.name} primaryCTA={hero.primaryCTA} />
+      <Header businessName={business.name} primaryCTA={hero.primaryCTA} logoUrl={logoUrl} />
       
       <Hero hero={hero} archetype={archetype} />
       <TrustStrip items={trustItems} />
       
       {showServices && <Services services={services} />}
       
-      <WhyChooseUs />
+      <Reputation business={business} />
       
       {showLocation && (
         <Location
