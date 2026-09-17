@@ -86,6 +86,29 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
   const totalReplies = Object.values(records).filter(r => ["REPLIED", "POSITIVE", "CALL_BOOKED", "WON"].includes(r.status)).length;
   const totalWon = Object.values(records).filter(r => r.status === "WON").length;
 
+  const channelMetrics = (ch: string) => {
+    const list = Object.values(records).filter(r => r.channel === ch);
+    return {
+      contacted: list.filter(r => r.status !== "NOT_STARTED" && r.status !== "READY").length,
+      replies: list.filter(r => ["REPLIED", "POSITIVE", "CALL_BOOKED", "WON"].includes(r.status)).length,
+      positive: list.filter(r => ["POSITIVE", "CALL_BOOKED", "WON"].includes(r.status)).length,
+    };
+  };
+  const waMetrics = channelMetrics("WHATSAPP");
+  const emMetrics = channelMetrics("EMAIL");
+  const igMetrics = channelMetrics("INSTAGRAM");
+
+  const handleManualTimezone = async (leadId: string) => {
+    const tz = prompt("Enter an IANA timezone (e.g. Asia/Dubai, Europe/London):");
+    if (!tz) return;
+    const res = await fetch(`/api/outreach/${leadId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "update_timezone", prospectTimezone: tz }),
+    });
+    if (res.ok) fetchData();
+  };
+
   return (
     <div className="p-6 max-w-[1200px] mx-auto animate-fade-in space-y-6">
       <div className="flex justify-between items-end">
@@ -95,7 +118,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-4">
         <div className="bg-white p-4 rounded shadow-sm border border-[#e5eaf0]">
           <div className="text-xs text-gray-500 font-bold uppercase">Ready</div>
           <div className="text-2xl font-bold">{totalReady}</div>
@@ -111,6 +134,21 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
         <div className="bg-white p-4 rounded shadow-sm border border-[#e5eaf0]">
           <div className="text-xs text-gray-500 font-bold uppercase">Won</div>
           <div className="text-2xl font-bold text-emerald-600">{totalWon}</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-white p-3 rounded shadow-sm border border-[#e5eaf0] text-xs flex justify-between">
+          <span className="font-bold text-gray-700">WhatsApp</span>
+          <span className="text-gray-500">C: {waMetrics.contacted} | R: {waMetrics.replies} | P: {waMetrics.positive}</span>
+        </div>
+        <div className="bg-white p-3 rounded shadow-sm border border-[#e5eaf0] text-xs flex justify-between">
+          <span className="font-bold text-gray-700">Email</span>
+          <span className="text-gray-500">C: {emMetrics.contacted} | R: {emMetrics.replies} | P: {emMetrics.positive}</span>
+        </div>
+        <div className="bg-white p-3 rounded shadow-sm border border-[#e5eaf0] text-xs flex justify-between">
+          <span className="font-bold text-gray-700">Instagram</span>
+          <span className="text-gray-500">C: {igMetrics.contacted} | R: {igMetrics.replies} | P: {igMetrics.positive}</span>
         </div>
       </div>
 
@@ -136,7 +174,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
 
             let timingState: OutreachTimingState = { status: "REVIEW_TIMEZONE", prospectLocalTime: null };
             if (rec.prospectTimezone) {
-              let rule: any = "DEFAULT";
+              let rule: "FRI_SAT" | "SUN_THU" | "MON_FRI" | "QATAR" | "DEFAULT" = "DEFAULT";
               if (rec.prospectTimezone.includes("Dubai")) rule = "MON_FRI";
               else if (rec.prospectTimezone.includes("Riyadh")) rule = "FRI_SAT";
               else if (rec.prospectTimezone.includes("Qatar")) rule = "QATAR";
@@ -146,6 +184,8 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
               timingState = evaluateSendWindow(rec.prospectTimezone, rule);
             }
 
+            const waLink = lead.phone && rec.message ? getWhatsAppDeepLink(lead.phone, rec.message) : null;
+
             return (
               <div key={lead.leadId} className="border border-[#e5eaf0] p-5 rounded-xl bg-white shadow-sm flex flex-col gap-4">
                 <div className="flex justify-between items-start">
@@ -154,11 +194,15 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                     <div className="text-xs text-gray-500 flex gap-2 mt-1">
                       <span className="bg-gray-100 px-2 py-0.5 rounded">{rec.channel}</span>
                       <span className="bg-gray-100 px-2 py-0.5 rounded uppercase">{rec.status}</span>
+                      {rec.followUpCount > 0 && <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">Follow-ups: {rec.followUpCount}</span>}
                     </div>
                   </div>
                   
                   <div className="text-right flex flex-col items-end">
-                    <div className="text-xs text-gray-500 mb-1">{rec.prospectTimezone || "Timezone Unknown"}</div>
+                    <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+                      {rec.prospectTimezone || "Timezone Unknown"}
+                      <button onClick={() => handleManualTimezone(lead.leadId)} className="text-blue-500 underline">Edit</button>
+                    </div>
                     <div className="text-sm font-semibold">{timingState.prospectLocalTime || "--"}</div>
                     <div className={cn("text-[11px] font-bold px-2 py-0.5 rounded mt-1", 
                       timingState.status === "SEND_NOW" ? "bg-emerald-50 text-emerald-700" : 
@@ -166,6 +210,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                     )}>
                       {timingState.status.replace("_", " ")}
                     </div>
+                    {rec.nextFollowUpAt && <div className="text-[10px] text-gray-400 mt-1">Next: {new Date(rec.nextFollowUpAt).toLocaleDateString()}</div>}
                   </div>
                 </div>
 
@@ -182,8 +227,8 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
 
                 {rec.message && (
                   <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-[#e5eaf0]">
-                    {rec.channel === "WHATSAPP" && lead.phone && (
-                      <a href={getWhatsAppDeepLink(lead.phone, rec.message)} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                    {rec.channel === "WHATSAPP" && waLink && (
+                      <a href={waLink} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open WhatsApp
                       </a>
                     )}
@@ -192,14 +237,24 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                         Open Default Mail
                       </a>
                     )}
-                    <a href="https://privateemail.com" target="_blank" rel="noreferrer" className="border border-[#dde3ea] text-[#526275] px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                    {rec.channel === "EMAIL" && (
+                      <a href="https://privateemail.com" target="_blank" rel="noreferrer" className="border border-[#dde3ea] text-[#526275] px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open Webmail
-                    </a>
+                      </a>
+                    )}
+                    {rec.channel === "INSTAGRAM" && lead.social?.instagram && (
+                      <a href={lead.social.instagram} target="_blank" rel="noreferrer" className="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                        Open Instagram
+                      </a>
+                    )}
                     
                     <div className="flex-1"></div>
 
                     <button onClick={() => handleStatus(lead.leadId, "REPLIED")} className="bg-[#8b5cf6] text-white px-3 py-2 rounded-lg text-xs font-bold">
                       Replied
+                    </button>
+                    <button onClick={() => handleStatus(lead.leadId, "POSITIVE")} className="bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold">
+                      Positive
                     </button>
                     <button onClick={() => handleStatus(lead.leadId, "WON")} className="bg-[#10b981] text-white px-3 py-2 rounded-lg text-xs font-bold">
                       Won

@@ -100,13 +100,26 @@ export async function POST(
       if (body.status) record.status = body.status;
       if (body.status === "CONTACTED") {
         record.lastContactedAt = new Date().toISOString();
-        // Follow up in 2 days
-        const next = new Date();
-        next.setDate(next.getDate() + 2);
-        record.nextFollowUpAt = next.toISOString();
+        if (record.followUpCount === 0) {
+          // Follow up 1 in 2 days
+          const next = new Date();
+          next.setDate(next.getDate() + 2);
+          record.nextFollowUpAt = next.toISOString();
+          record.followUpCount = 1;
+        } else if (record.followUpCount === 1) {
+          // Follow up 2 in 4 days
+          const next = new Date();
+          next.setDate(next.getDate() + 4);
+          record.nextFollowUpAt = next.toISOString();
+          record.followUpCount = 2;
+        } else {
+          // Max 2 follow ups
+          record.nextFollowUpAt = null;
+        }
       }
-      if (body.status === "REPLIED" || body.status === "POSITIVE") {
+      if (["REPLIED", "POSITIVE", "CALL_BOOKED", "WON", "LOST"].includes(body.status || "")) {
         record.repliedAt = new Date().toISOString();
+        record.nextFollowUpAt = null; // stop further follow-ups
       }
       record = await upsertOutreachRecord(record);
       return NextResponse.json({ record });

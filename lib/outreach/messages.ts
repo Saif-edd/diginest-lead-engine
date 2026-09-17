@@ -67,8 +67,9 @@ ${ctx.finalPreviewUrl}
 If you want, I can send you the full direction.`;
 }
 
-export function getWhatsAppDeepLink(phone: string, text: string): string {
+export function getWhatsAppDeepLink(phone: string, text: string): string | null {
   const cleanPhone = phone.replace(/[^0-9]/g, "");
+  if (cleanPhone.length < 5) return null;
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
 }
 
