@@ -63,6 +63,7 @@ import type {
   WorkspaceMode,
 } from "@/types/lead";
 import type { ImportMode, ImportReport } from "@/types/import";
+import { OutreachStudioView } from "./outreach-studio";
 
 type ViewName =
   | "Overview"
@@ -4528,11 +4529,15 @@ export function LeadEngine() {
           {activeView === "Preview Studio" && (
             <PreviewStudioView leads={leads} onOpenLead={setSelectedLead} ensureAdminSession={ensureAdminSession} />
           )}
+          {activeView === "Outreach" && (
+            <OutreachStudioView leads={leads} />
+          )}
           {activeView !== "Overview" &&
             activeView !== "Leads" &&
             activeView !== "Website Audit" &&
             activeView !== "Qualified" &&
-            activeView !== "Preview Studio" && (
+            activeView !== "Preview Studio" &&
+            activeView !== "Outreach" && (
               <EmptyView
                 view={activeView}
                 leads={leads}

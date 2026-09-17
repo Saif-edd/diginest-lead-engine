@@ -12,6 +12,7 @@ import type {
   PreviewAssetPack,
   V0PromptPack,
 } from "@/types/preview";
+import type { OutreachRecord, OutreachRecordStatus, OutreachChannel } from "@/types/outreach";
 import { leadIdentity } from "@/lib/normalization";
 import { automaticQualificationFor, calculateLeadScore, effectiveQualificationFor } from "@/lib/scoring";
 import { recoverStaleAudit } from "@/lib/audit/state";
@@ -53,6 +54,29 @@ async function ensureSchema() {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             ready_at TEXT
+          )`,
+          args: [],
+        },
+        {
+          sql: `CREATE TABLE IF NOT EXISTS outreach_records (
+            id TEXT PRIMARY KEY,
+            lead_id TEXT NOT NULL UNIQUE,
+            preview_id TEXT NOT NULL,
+            final_preview_url TEXT NOT NULL,
+            channel TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+            hook TEXT,
+            message TEXT,
+            subject TEXT,
+            prospect_timezone TEXT,
+            timezone_source TEXT,
+            timezone_confidence TEXT,
+            follow_up_count INTEGER NOT NULL DEFAULT 0,
+            last_contacted_at TEXT,
+            next_follow_up_at TEXT,
+            replied_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
           )`,
           args: [],
         },
@@ -431,3 +455,82 @@ export async function listAllPreviews(): Promise<PreviewRecord[]> {
   const result = await database().execute({ sql: "SELECT * FROM preview_records ORDER BY created_at DESC", args: [] });
   return result.rows.map((r) => rowToPreviewRecord(r as Record<string, unknown>));
 }
+
+// ---------------------------------------------------------------
+// Outreach Records
+// ---------------------------------------------------------------
+
+function rowToOutreachRecord(row: Record<string, unknown>): OutreachRecord {
+  return {
+    id: String(row.id),
+    leadId: String(row.lead_id),
+    previewId: String(row.preview_id),
+    finalPreviewUrl: String(row.final_preview_url),
+    channel: String(row.channel) as OutreachChannel,
+    status: String(row.status) as OutreachRecordStatus,
+    hook: row.hook ? String(row.hook) : null,
+    message: row.message ? String(row.message) : null,
+    subject: row.subject ? String(row.subject) : null,
+    prospectTimezone: row.prospect_timezone ? String(row.prospect_timezone) : null,
+    timezoneSource: row.timezone_source ? String(row.timezone_source) as "DERIVED" | "MANUAL" : null,
+    timezoneConfidence: row.timezone_confidence ? String(row.timezone_confidence) as "HIGH" | "MEDIUM" | "LOW" : null,
+    followUpCount: Number(row.follow_up_count),
+    lastContactedAt: row.last_contacted_at ? String(row.last_contacted_at) : null,
+    nextFollowUpAt: row.next_follow_up_at ? String(row.next_follow_up_at) : null,
+    repliedAt: row.replied_at ? String(row.replied_at) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+export async function upsertOutreachRecord(
+  record: Omit<OutreachRecord, "createdAt" | "updatedAt">
+): Promise<OutreachRecord> {
+  await ensureSchema();
+  const timestamp = now();
+  await database().execute({
+    sql: `INSERT INTO outreach_records (
+            id, lead_id, preview_id, final_preview_url, channel, status, 
+            hook, message, subject, prospect_timezone, timezone_source, timezone_confidence,
+            follow_up_count, last_contacted_at, next_follow_up_at, replied_at,
+            created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(lead_id) DO UPDATE SET
+            channel = excluded.channel,
+            status = excluded.status,
+            hook = excluded.hook,
+            message = excluded.message,
+            subject = excluded.subject,
+            prospect_timezone = excluded.prospect_timezone,
+            timezone_source = excluded.timezone_source,
+            timezone_confidence = excluded.timezone_confidence,
+            follow_up_count = excluded.follow_up_count,
+            last_contacted_at = excluded.last_contacted_at,
+            next_follow_up_at = excluded.next_follow_up_at,
+            replied_at = excluded.replied_at,
+            updated_at = excluded.updated_at`,
+    args: [
+      record.id, record.leadId, record.previewId, record.finalPreviewUrl, record.channel, record.status,
+      record.hook, record.message, record.subject, record.prospectTimezone, record.timezoneSource, record.timezoneConfidence,
+      record.followUpCount, record.lastContactedAt, record.nextFollowUpAt, record.repliedAt,
+      timestamp, timestamp
+    ]
+  });
+  
+  const inserted = await database().execute({ sql: "SELECT * FROM outreach_records WHERE lead_id = ?", args: [record.leadId] });
+  return rowToOutreachRecord(inserted.rows[0] as Record<string, unknown>);
+}
+
+export async function findOutreachByLeadId(leadId: string): Promise<OutreachRecord | null> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM outreach_records WHERE lead_id = ?", args: [leadId] });
+  return result.rows[0] ? rowToOutreachRecord(result.rows[0] as Record<string, unknown>) : null;
+}
+
+export async function listOutreachRecords(): Promise<OutreachRecord[]> {
+  await ensureSchema();
+  const result = await database().execute({ sql: "SELECT * FROM outreach_records ORDER BY created_at DESC", args: [] });
+  return result.rows.map((r) => rowToOutreachRecord(r as Record<string, unknown>));
+}
+
