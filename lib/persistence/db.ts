@@ -106,6 +106,21 @@ async function ensureSchema() {
           // Column already exists – safe to ignore duplicate-column error
         }
       }
+
+      // Sprint 3B.1 additive migration – copy variant tracking on outreach_records
+      const sprint3b1Columns = [
+        `ALTER TABLE outreach_records ADD COLUMN copy_variant TEXT`,
+        `ALTER TABLE outreach_records ADD COLUMN subject_variant_id TEXT`,
+        `ALTER TABLE outreach_records ADD COLUMN message_variant_id TEXT`,
+      ];
+
+      for (const sql of sprint3b1Columns) {
+        try {
+          await db.execute({ sql, args: [] });
+        } catch {
+          // Column already exists – safe to ignore
+        }
+      }
     })();
   }
   await schemaPromise;
@@ -471,6 +486,9 @@ function rowToOutreachRecord(row: Record<string, unknown>): OutreachRecord {
     hook: row.hook ? String(row.hook) : null,
     message: row.message ? String(row.message) : null,
     subject: row.subject ? String(row.subject) : null,
+    copyVariant: row.copy_variant ? String(row.copy_variant) as import("@/types/outreach").CopyVariant : null,
+    subjectVariantId: row.subject_variant_id ? String(row.subject_variant_id) : null,
+    messageVariantId: row.message_variant_id ? String(row.message_variant_id) : null,
     prospectTimezone: row.prospect_timezone ? String(row.prospect_timezone) : null,
     timezoneSource: row.timezone_source ? String(row.timezone_source) as "DERIVED" | "MANUAL" : null,
     timezoneConfidence: row.timezone_confidence ? String(row.timezone_confidence) as "HIGH" | "MEDIUM" | "LOW" : null,
@@ -483,6 +501,7 @@ function rowToOutreachRecord(row: Record<string, unknown>): OutreachRecord {
   };
 }
 
+
 export async function upsertOutreachRecord(
   record: Omit<OutreachRecord, "createdAt" | "updatedAt">
 ): Promise<OutreachRecord> {
@@ -491,17 +510,21 @@ export async function upsertOutreachRecord(
   await database().execute({
     sql: `INSERT INTO outreach_records (
             id, lead_id, preview_id, final_preview_url, channel, status, 
-            hook, message, subject, prospect_timezone, timezone_source, timezone_confidence,
+            hook, message, subject, copy_variant, subject_variant_id, message_variant_id,
+            prospect_timezone, timezone_source, timezone_confidence,
             follow_up_count, last_contacted_at, next_follow_up_at, replied_at,
             created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(lead_id) DO UPDATE SET
             channel = excluded.channel,
             status = excluded.status,
             hook = excluded.hook,
             message = excluded.message,
             subject = excluded.subject,
+            copy_variant = excluded.copy_variant,
+            subject_variant_id = excluded.subject_variant_id,
+            message_variant_id = excluded.message_variant_id,
             prospect_timezone = excluded.prospect_timezone,
             timezone_source = excluded.timezone_source,
             timezone_confidence = excluded.timezone_confidence,
@@ -512,7 +535,9 @@ export async function upsertOutreachRecord(
             updated_at = excluded.updated_at`,
     args: [
       record.id, record.leadId, record.previewId, record.finalPreviewUrl, record.channel, record.status,
-      record.hook, record.message, record.subject, record.prospectTimezone, record.timezoneSource, record.timezoneConfidence,
+      record.hook, record.message, record.subject,
+      record.copyVariant ?? null, record.subjectVariantId ?? null, record.messageVariantId ?? null,
+      record.prospectTimezone, record.timezoneSource, record.timezoneConfidence,
       record.followUpCount, record.lastContactedAt, record.nextFollowUpAt, record.repliedAt,
       timestamp, timestamp
     ]
@@ -521,6 +546,7 @@ export async function upsertOutreachRecord(
   const inserted = await database().execute({ sql: "SELECT * FROM outreach_records WHERE lead_id = ?", args: [record.leadId] });
   return rowToOutreachRecord(inserted.rows[0] as Record<string, unknown>);
 }
+
 
 export async function findOutreachByLeadId(leadId: string): Promise<OutreachRecord | null> {
   await ensureSchema();

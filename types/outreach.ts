@@ -16,6 +16,9 @@ export const outreachRecordStatuses = [
 ] as const;
 export type OutreachRecordStatus = (typeof outreachRecordStatuses)[number];
 
+export const copyVariants = ["AGGRESSIVE", "CURIOUS", "CLEAN"] as const;
+export type CopyVariant = (typeof copyVariants)[number];
+
 export interface OutreachRecord {
   id: string;
   leadId: string;
@@ -28,6 +31,11 @@ export interface OutreachRecord {
   hook: string | null;
   message: string | null;
   subject: string | null;
+
+  // Copy variant tracking (Sprint 3B.1)
+  copyVariant: CopyVariant | null;
+  subjectVariantId: string | null;
+  messageVariantId: string | null;
 
   // Timezone persistence
   prospectTimezone: string | null; // IANA timezone
@@ -43,6 +51,7 @@ export interface OutreachRecord {
   createdAt: string;
   updatedAt: string;
 }
+
 
 // Derived transient timing properties
 export interface OutreachTimingState {

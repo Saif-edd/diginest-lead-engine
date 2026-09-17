@@ -3607,6 +3607,52 @@ function PreviewStudioView({
   const [drawerPreviewId, setDrawerPreviewId] = useState<string | null>(null);
   const [addUrlPreviewId, setAddUrlPreviewId] = useState<string | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // ── Initial hydration: load all persisted preview records from the DB on mount ──
+  useEffect(() => {
+    void fetch("/api/preview")
+      .then((r) => r.json() as Promise<{ records?: Record<string, unknown>[] }>)
+      .then((data) => {
+        if (!data.records) return;
+        setRowStates((prev) => {
+          const next = { ...prev };
+          for (const rec of data.records!) {
+            const leadId = String(rec.lead_id ?? rec.leadId ?? "");
+            if (!leadId) continue;
+            // Build state from persisted record — same logic as applyRecord
+            let ws = String(rec.workflow_status ?? rec.workflowStatus ?? "");
+            const legacy = String(rec.status ?? "");
+            const promptObj = rec.v0PromptPack;
+            const hasPrompt = Boolean(promptObj && typeof promptObj === "object" && Object.keys(promptObj as object).length > 0);
+            const assetObj = rec.assetPack;
+            const hasAssets = Boolean(assetObj && typeof assetObj === "object" && Object.keys(assetObj as object).length > 0);
+            const finalUrl = rec.finalPreviewUrl ? String(rec.finalPreviewUrl) : null;
+            if (!ws || ws === "undefined" || ws === "null" || ws === "NOT_STARTED") {
+              if (legacy === "READY") ws = finalUrl ? "READY_FOR_OUTREACH" : "PREVIEW_LINK_ADDED";
+              else if (legacy === "DRAFT") ws = hasPrompt ? "PROMPT_READY" : "BRIEF_READY";
+              else ws = "NOT_STARTED";
+            }
+            next[leadId] = {
+              leadId,
+              previewId: String(rec.id ?? "") || null,
+              workflowStatus: ws as V0WorkflowStatusUI,
+              legacyStatus: legacy || null,
+              slug: String(rec.slug ?? "") || null,
+              finalPreviewUrl: finalUrl,
+              hasPrompt,
+              hasAssets,
+              loading: false,
+              error: null,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => { /* silent – rowStates stay empty, user can still trigger actions */ })
+      .finally(() => setHydrated(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const eligibleLeads = useMemo(() => {
     return leads
