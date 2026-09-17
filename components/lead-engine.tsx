@@ -3180,12 +3180,18 @@ function V0PromptDrawer({
 
   useEffect(() => {
     void fetch(`/api/preview/${previewId}`)
-      .then((r) => r.json() as Promise<{ record?: { v0_prompt_json?: V0PromptData; verified_facts_json?: VerifiedFactsData; asset_pack_json?: AssetData }; error?: string }>)
+      .then((r) => r.json() as Promise<{ record?: { v0PromptPack?: V0PromptData; verifiedFacts?: VerifiedFactsData; assetPack?: AssetData }; error?: string }>)
       .then((data) => {
         if (data.error) { setError(data.error); return; }
-        if (data.record?.v0_prompt_json) setPromptData(data.record.v0_prompt_json);
-        if (data.record?.verified_facts_json) setFactsData(data.record.verified_facts_json);
-        if (data.record?.asset_pack_json) setAssetData(data.record.asset_pack_json);
+        if (data.record?.v0PromptPack) {
+          setPromptData(data.record.v0PromptPack as V0PromptData);
+        }
+        if (data.record?.verifiedFacts) {
+          setFactsData(data.record.verifiedFacts as VerifiedFactsData);
+        }
+        if (data.record?.assetPack) {
+          setAssetData(data.record.assetPack as AssetData);
+        }
       })
       .catch(() => setError("Failed to load prompt pack"))
       .finally(() => setLoading(false));
@@ -3671,10 +3677,11 @@ function PreviewStudioView({
     let ws = String(rec.workflow_status ?? rec.workflowStatus ?? "");
     const legacy = String(rec.status ?? "");
     // Check if prompt exists (not null and has keys)
-    const promptObj = rec.v0_prompt_json;
+    const promptObj = rec.v0PromptPack;
     const hasPrompt = Boolean(promptObj && typeof promptObj === "object" && Object.keys(promptObj).length > 0);
-    const hasAssets = Boolean(rec.asset_pack_json && typeof rec.asset_pack_json === "object" && Object.keys(rec.asset_pack_json).length > 0);
-    const finalUrl = rec.final_preview_url ? String(rec.final_preview_url) : null;
+    const assetObj = rec.assetPack;
+    const hasAssets = Boolean(assetObj && typeof assetObj === "object" && Object.keys(assetObj).length > 0);
+    const finalUrl = rec.finalPreviewUrl ? String(rec.finalPreviewUrl) : null;
 
     if (!ws || ws === "undefined" || ws === "null" || ws === "NOT_STARTED") {
       if (legacy === "READY") {
