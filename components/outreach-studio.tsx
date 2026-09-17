@@ -224,7 +224,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
               : null;
             const displayMessage = activeDraft?.message ?? rec.message ?? null;
             const displaySubject = activeDraft?.subject ?? rec.subject ?? null;
-            const waLink = lead.phone && displayMessage ? getWhatsAppDeepLink(lead.phone, displayMessage) : null;
+            
             const preview = previews[lead.leadId];
 
             return (
@@ -347,8 +347,8 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                 {/* Action bar */}
                 {displayMessage && (
                   <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-[#e5eaf0]">
-                    {lead.phone && (
-                      <a href={getWhatsAppDeepLink(lead.phone, (cache?.variantsByChannel?.WHATSAPP?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                    {preview?.verifiedFacts?.whatsapp && (
+                      <a href={getWhatsAppDeepLink(preview.verifiedFacts.whatsapp, (cache?.variantsByChannel?.WHATSAPP?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open WhatsApp
                       </a>
                     )}
@@ -408,6 +408,8 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
+
+
 
 
 

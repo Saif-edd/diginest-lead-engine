@@ -1,9 +1,10 @@
 import type { Lead } from "@/types/lead";
 import type { OutreachChannel } from "@/types/outreach";
+import type { PreviewRecord } from "@/types/preview";
 
-export function recommendOutreachChannel(lead: Lead): OutreachChannel {
+export function recommendOutreachChannel(lead: Lead, preview?: PreviewRecord | null): OutreachChannel {
+  if (preview?.verifiedFacts?.whatsapp) return "WHATSAPP";
   if (lead.email) return "EMAIL";
   if (lead.socialUrl) return "INSTAGRAM";
-  if (lead.phone) return "WHATSAPP";
-  return "INSTAGRAM";
+  return "EMAIL"; // Fallback
 }

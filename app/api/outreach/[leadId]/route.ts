@@ -37,7 +37,7 @@ export async function POST(
 
     if (body.action === "initialize" && !record) {
       // Determine recommended channel
-      const recommendedChannel = recommendOutreachChannel(lead);
+      const recommendedChannel = recommendOutreachChannel(lead, preview);
 
       const tz = deriveTimezone(lead.address || "");
       
@@ -201,7 +201,7 @@ export async function GET(
       previewType: preview.archetype ?? null,
     };
 
-    const channel: OutreachChannel = record?.channel ?? recommendOutreachChannel(lead);
+    const channel: OutreachChannel = record?.channel ?? recommendOutreachChannel(lead, preview);
     const allVariants = generateAllVariants(ctx, channel);
     const variantsByChannel = {
       WHATSAPP: generateAllVariants(ctx, "WHATSAPP"),
@@ -216,4 +216,5 @@ export async function GET(
 
 // Re-export helpers for the UI's direct-link generation
 export { getWhatsAppDeepLink, getEmailMailto };
+
 
