@@ -56,14 +56,23 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
     fetchData();
   }, []);
 
-  const eligibleLeads = leads.filter((l) => {
+  const allReadyLeads = leads.filter((l) => {
     const p = previews[l.leadId];
     return (
       (l.qualificationStatus === "QUALIFIED" || l.manualDecision === "QUALIFY") &&
       p?.workflowStatus === "READY_FOR_OUTREACH" &&
-      p?.finalPreviewUrl &&
-      (l.reachability.hasPhone || l.reachability.hasEmail || l.reachability.hasSocial)
+      p?.finalPreviewUrl
     );
+  });
+
+  const eligibleLeads = allReadyLeads.filter((l) => {
+    const p = previews[l.leadId];
+    return (p?.verifiedFacts?.whatsapp || l.email || getVerifiedInstagram(l, p));
+  });
+
+  const unreachableLeads = allReadyLeads.filter((l) => {
+    const p = previews[l.leadId];
+    return !(p?.verifiedFacts?.whatsapp || l.email || getVerifiedInstagram(l, p));
   });
 
   const handleInit = async (leadId: LeadId) => {
@@ -442,7 +451,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
               </div>
             );
           })}
-          {eligibleLeads.length === 0 && (
+          {eligibleLeads.length === 0 && unreachableLeads.length === 0 && (
             <div className="text-center p-12 text-gray-500 border border-dashed rounded-xl">
               No leads are READY_FOR_OUTREACH yet.
             </div>
