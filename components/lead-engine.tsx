@@ -3629,7 +3629,7 @@ function PreviewStudioView({
             const hasAssets = Boolean(assetObj && typeof assetObj === "object" && Object.keys(assetObj as object).length > 0);
             const finalUrl = rec.finalPreviewUrl ? String(rec.finalPreviewUrl) : null;
             if (!ws || ws === "undefined" || ws === "null" || ws === "NOT_STARTED") {
-              if (legacy === "READY") ws = finalUrl ? "READY_FOR_OUTREACH" : "PREVIEW_LINK_ADDED";
+              if (legacy === "READY") ws = finalUrl ? "READY_FOR_OUTREACH" : (hasPrompt ? "PROMPT_READY" : "BRIEF_READY");
               else if (legacy === "DRAFT") ws = hasPrompt ? "PROMPT_READY" : "BRIEF_READY";
               else ws = "NOT_STARTED";
             }
@@ -4614,3 +4614,4 @@ export function LeadEngine() {
     </div>
   );
 }
+

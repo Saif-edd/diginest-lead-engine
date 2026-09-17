@@ -21,7 +21,7 @@ export async function POST(
       return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
     const body = (await request.json()) as {
-      action: "initialize" | "generate" | "update_status" | "update_timezone";
+      action: "initialize" | "generate" | "update_status" | "update_timezone" | "update_channel";
       channel?: OutreachChannel;
       copyVariant?: CopyVariant;
       status?: OutreachRecordStatus;
@@ -126,6 +126,12 @@ export async function POST(
       return NextResponse.json({ record, allVariants, variantsByChannel });
     }
 
+    if (body.action === "update_channel") {
+      if (body.channel) record.channel = body.channel;
+      await upsertOutreachRecord(record);
+      return NextResponse.json({ record });
+    }
+
     if (body.action === "update_status") {
       if (body.status) record.status = body.status;
       if (body.status === "CONTACTED") {
@@ -216,5 +222,7 @@ export async function GET(
 
 // Re-export helpers for the UI's direct-link generation
 export { getWhatsAppDeepLink, getEmailMailto };
+
+
 
 

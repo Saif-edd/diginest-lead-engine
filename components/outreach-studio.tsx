@@ -5,6 +5,7 @@ import { Lead } from "@/types/lead";
 import { OutreachRecord, OutreachTimingState, CopyVariant, OutreachChannel } from "@/types/outreach";
 import { PreviewRecord } from "@/types/preview";
 import { getWhatsAppDeepLink, getEmailMailto, type AllVariants } from "@/lib/outreach/messages";
+import { recommendOutreachChannel, getVerifiedInstagram } from "@/lib/outreach/channels";
 import { evaluateSendWindow } from "@/lib/outreach/timezones";
 
 type LeadId = string;
@@ -20,6 +21,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
   const [previews, setPreviews] = useState<Record<LeadId, PreviewRecord>>({});
   const [variantCache, setVariantCache] = useState<Record<LeadId, VariantCache>>({});
   const [selectedVariant, setSelectedVariant] = useState<Record<LeadId, CopyVariant>>({});
+  const [selectedChannel, setSelectedChannel] = useState<Record<LeadId, OutreachChannel>>({});
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<Record<LeadId, boolean>>({});
 
@@ -215,17 +217,25 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
               timingState = evaluateSendWindow(rec.prospectTimezone, rule);
             }
 
+            const preview = previews[lead.leadId];
+            const defaultRecChannel = recommendOutreachChannel(lead, preview);
+            const activeChannel = selectedChannel[lead.leadId] ?? defaultRecChannel;
+            
             const cache = variantCache[lead.leadId];
-            const active = selectedVariant[lead.leadId] ?? rec.copyVariant ?? cache?.recommended ?? "CURIOUS";
-            const activeDraft = cache?.allVariants
-              ? (active === "AGGRESSIVE" ? cache.allVariants.aggressive
-                : active === "CURIOUS"    ? cache.allVariants.curious
-                : cache.allVariants.clean)
+            const activeVariant = selectedVariant[lead.leadId] ?? rec.copyVariant ?? cache?.recommended ?? "CURIOUS";
+            
+            const channelVariants = cache?.variantsByChannel?.[activeChannel] ?? cache?.allVariants;
+            const activeDraft = channelVariants
+              ? (activeVariant === "AGGRESSIVE" ? channelVariants.aggressive
+                : activeVariant === "CURIOUS"    ? channelVariants.curious
+                : channelVariants.clean)
               : null;
+              
             const displayMessage = activeDraft?.message ?? rec.message ?? null;
             const displaySubject = activeDraft?.subject ?? rec.subject ?? null;
             
-            const preview = previews[lead.leadId];
+            const igUrl = getVerifiedInstagram(lead, preview);
+            const hasAnyChannel = preview?.verifiedFacts?.whatsapp || lead.email || igUrl;
 
             return (
               <div key={lead.leadId} className="border border-[#e5eaf0] p-5 rounded-xl bg-white shadow-sm flex flex-col gap-4">
@@ -234,13 +244,13 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                   <div>
                     <div className="font-bold text-lg text-[#17243a]">{lead.name}</div>
                     <div className="text-xs text-gray-500 flex gap-2 mt-1 flex-wrap">
-                      <span className="bg-gray-100 px-2 py-0.5 rounded">{rec.channel}</span>
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">{activeChannel}</span>
                       <span className="bg-gray-100 px-2 py-0.5 rounded uppercase">{rec.status}</span>
                       {rec.copyVariant && <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{rec.copyVariant}</span>}
                       {rec.followUpCount > 0 && <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">Follow-ups: {rec.followUpCount}</span>}
                       {preview?.finalPreviewUrl && (
                         <a href={preview.finalPreviewUrl} target="_blank" rel="noreferrer" className="bg-teal-50 text-teal-700 px-2 py-0.5 rounded hover:underline">
-                          Preview ↗
+                          Preview â†—
                         </a>
                       )}
                     </div>
@@ -262,134 +272,172 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                   </div>
                 </div>
 
-                {/* Variant selector */}
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Variant:</span>
-                  {(["AGGRESSIVE", "CURIOUS", "CLEAN"] as CopyVariant[]).map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setSelectedVariant((p) => ({ ...p, [lead.leadId]: v }))}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border transition-all",
-                        active === v
-                          ? v === "AGGRESSIVE" ? "bg-rose-600 text-white border-rose-600"
-                          : v === "CURIOUS"    ? "bg-[#00aaca] text-white border-[#00aaca]"
-                          : "bg-[#17243a] text-white border-[#17243a]"
-                          : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
-                      )}
-                    >
-                      {v === "AGGRESSIVE" ? "🔥 Aggressive" : v === "CURIOUS" ? "🎯 Curious" : "✦ Clean"}
-                    </button>
-                  ))}
-                  {cache?.recommended && (
-                    <span className="text-[10px] text-gray-400">Recommended: {cache.recommended}</span>
-                  )}
-                </div>
+                {!hasAnyChannel ? (
+                  <div className="text-center p-4 bg-red-50 text-red-700 rounded-lg text-sm font-bold border border-red-200">
+                    No valid contact methods found. Please review reachability manually or archive this lead.
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col gap-4">
+                      {/* Channel selector */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Channel:</span>
+                        {(["WHATSAPP", "EMAIL", "INSTAGRAM"] as OutreachChannel[]).map((ch) => {
+                          const disabled = 
+                            (ch === "WHATSAPP" && !preview?.verifiedFacts?.whatsapp) ||
+                            (ch === "EMAIL" && !lead.email) ||
+                            (ch === "INSTAGRAM" && !igUrl);
+                          
+                          if (disabled) return null;
+                          
+                          return (
+                            <button
+                              key={ch}
+                              onClick={() => setSelectedChannel((p) => ({ ...p, [lead.leadId]: ch }))}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border transition-all",
+                                activeChannel === ch
+                                  ? "bg-[#17243a] text-white border-[#17243a]"
+                                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                              )}
+                            >
+                              {ch}
+                            </button>
+                          );
+                        })}
+                      </div>
 
-                {/* Copy display */}
-                {!cache && !rec.message ? (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleLoadVariants(lead.leadId)}
-                      disabled={generating[lead.leadId]}
-                      className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm disabled:opacity-50"
-                    >
-                      {generating[lead.leadId] ? "Loading..." : "Generate Drafts"}
-                    </button>
-                  </div>
-                ) : !cache && rec.message ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="bg-[#f5f7fa] p-4 rounded-lg text-sm text-[#27364b] whitespace-pre-wrap font-mono border border-[#dde3ea]">
-                      {displaySubject && <div className="font-bold mb-3 pb-2 border-b border-[#dde3ea]">Subject: {displaySubject}</div>}
-                      {displayMessage}
-                    </div>
-                    <button
-                      onClick={() => handleLoadVariants(lead.leadId)}
-                      disabled={generating[lead.leadId]}
-                      className="text-[#00aaca] text-xs underline w-fit disabled:opacity-50"
-                    >
-                      {generating[lead.leadId] ? "Loading..." : "Load all 3 variants"}
-                    </button>
-                  </div>
-                ) : cache ? (
-                  <div className="flex flex-col gap-3">
-                    {/* Quality flags */}
-                    {activeDraft && activeDraft.qualityFlags.length > 0 && (
-                      <div className="flex gap-2 flex-wrap">
-                        {activeDraft.qualityFlags.map((f) => (
-                          <span key={f} className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                            ⚠ {f.replace(/_/g, " ")}
-                          </span>
+                      {/* Variant selector */}
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Variant:</span>
+                        {(["AGGRESSIVE", "CURIOUS", "CLEAN"] as CopyVariant[]).map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => setSelectedVariant((p) => ({ ...p, [lead.leadId]: v }))}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border transition-all",
+                              activeVariant === v
+                                ? v === "AGGRESSIVE" ? "bg-rose-600 text-white border-rose-600"
+                                : v === "CURIOUS"    ? "bg-[#00aaca] text-white border-[#00aaca]"
+                                : "bg-[#17243a] text-white border-[#17243a]"
+                                : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                            )}
+                          >
+                            {v === "AGGRESSIVE" ? "🔥 Aggressive" : v === "CURIOUS" ? "🎯 Curious" : "✦ Clean"}
+                          </button>
                         ))}
-                        {!activeDraft.passed && (
-                          <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2 py-1 rounded text-xs font-bold">DRAFT NEEDS REVIEW</span>
+                        {cache?.recommended && (
+                          <span className="text-[10px] text-gray-400">Recommended: {cache.recommended}</span>
                         )}
                       </div>
-                    )}
-
-                    {/* Message */}
-                    <div className="bg-[#f5f7fa] p-4 rounded-lg text-sm text-[#27364b] whitespace-pre-wrap font-mono border border-[#dde3ea]">
-                      {displaySubject && <div className="font-bold mb-3 pb-2 border-b border-[#dde3ea]">Subject: {displaySubject}</div>}
-                      {displayMessage}
                     </div>
 
-                    {/* Save selected variant */}
-                    <button
-                      onClick={() => handleGenerate(lead.leadId, active)}
-                      disabled={generating[lead.leadId]}
-                      className="bg-[#17243a] text-white px-4 py-2 rounded-lg text-xs font-bold w-fit shadow-sm disabled:opacity-50"
-                    >
-                      {generating[lead.leadId] ? "Saving..." : `Use ${active} variant`}
-                    </button>
-                  </div>
-                ) : null}
+                    {/* Copy display */}
+                    {!cache && !rec.message ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleLoadVariants(lead.leadId)}
+                          disabled={generating[lead.leadId]}
+                          className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm disabled:opacity-50"
+                        >
+                          {generating[lead.leadId] ? "Loading..." : "Generate Drafts"}
+                        </button>
+                      </div>
+                    ) : !cache && rec.message ? (
+                      <div className="flex flex-col gap-3">
+                        <div className="bg-[#f5f7fa] p-4 rounded-lg text-sm text-[#27364b] whitespace-pre-wrap font-mono border border-[#dde3ea]">
+                          {displaySubject && <div className="font-bold mb-3 pb-2 border-b border-[#dde3ea]">Subject: {displaySubject}</div>}
+                          {displayMessage}
+                        </div>
+                        <button
+                          onClick={() => handleLoadVariants(lead.leadId)}
+                          disabled={generating[lead.leadId]}
+                          className="text-[#00aaca] text-xs underline w-fit disabled:opacity-50"
+                        >
+                          {generating[lead.leadId] ? "Loading..." : "Load all variants"}
+                        </button>
+                      </div>
+                    ) : cache ? (
+                      <div className="flex flex-col gap-3">
+                        {/* Quality flags */}
+                        {activeDraft && activeDraft.qualityFlags.length > 0 && (
+                          <div className="flex gap-2 flex-wrap">
+                            {activeDraft.qualityFlags.map((f) => (
+                              <span key={f} className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                ⚠ {f.replace(/_/g, " ")}
+                              </span>
+                            ))}
+                            {!activeDraft.passed && (
+                              <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2 py-1 rounded text-xs font-bold">DRAFT NEEDS REVIEW</span>
+                            )}
+                          </div>
+                        )}
 
-                {/* Action bar */}
-                {displayMessage && (
-                  <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-[#e5eaf0]">
-                    {preview?.verifiedFacts?.whatsapp && (
-                      <a href={getWhatsAppDeepLink(preview.verifiedFacts.whatsapp, (cache?.variantsByChannel?.WHATSAPP?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
-                        Open WhatsApp
-                      </a>
-                    )}
-                    {lead.email && (
-                      <a href={getEmailMailto(lead.email, (cache?.variantsByChannel?.EMAIL?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.subject as string) || (displaySubject as string) || `Website improvement for ${lead.name}`, (cache?.variantsByChannel?.EMAIL?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
-                        Open Default Mail
-                      </a>
-                    )}
-                    {lead.email && (
-                      <a href="https://privateemail.com" target="_blank" rel="noreferrer" className="border border-[#dde3ea] text-[#526275] px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
-                        Open Webmail
-                      </a>
-                    )}
-                    {lead.socialUrl && (
-                      <a href={lead.socialUrl} target="_blank" rel="noreferrer" className="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
-                        Open Instagram
-                      </a>
-                    )}
-                    {/* Copy buttons */}
-                    {displaySubject && (
-                      <button
-                        onClick={() => navigator.clipboard.writeText(displaySubject)}
-                        className="border border-[#dde3ea] text-[#526275] px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-50"
-                      >
-                        Copy Subject
-                      </button>
-                    )}
-                    <button
-                      onClick={() => navigator.clipboard.writeText(displayMessage)}
-                      className="border border-[#dde3ea] text-[#526275] px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-50"
-                    >
-                      Copy Message
-                    </button>
+                        {/* Message */}
+                        <div className="bg-[#f5f7fa] p-4 rounded-lg text-sm text-[#27364b] whitespace-pre-wrap font-mono border border-[#dde3ea]">
+                          {displaySubject && <div className="font-bold mb-3 pb-2 border-b border-[#dde3ea]">Subject: {displaySubject}</div>}
+                          {displayMessage}
+                        </div>
 
-                    <div className="flex-1" />
+                        {/* Save selected variant */}
+                        <button
+                          onClick={() => handleGenerate(lead.leadId, activeVariant)}
+                          disabled={generating[lead.leadId]}
+                          className="bg-[#17243a] text-white px-4 py-2 rounded-lg text-xs font-bold w-fit shadow-sm disabled:opacity-50"
+                        >
+                          {generating[lead.leadId] ? "Saving..." : `Use ${activeVariant} variant`}
+                        </button>
+                      </div>
+                    ) : null}
 
-                    <button onClick={() => handleStatus(lead.leadId, "REPLIED")} className="bg-[#8b5cf6] text-white px-3 py-2 rounded-lg text-xs font-bold">Replied</button>
-                    <button onClick={() => handleStatus(lead.leadId, "POSITIVE")} className="bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold">Positive</button>
-                    <button onClick={() => handleStatus(lead.leadId, "WON")} className="bg-[#10b981] text-white px-3 py-2 rounded-lg text-xs font-bold">Won</button>
-                    <button onClick={() => handleStatus(lead.leadId, "LOST")} className="bg-[#ef4444] text-white px-3 py-2 rounded-lg text-xs font-bold">Lost</button>
-                  </div>
+                    {/* Action bar */}
+                    {displayMessage && (
+                      <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-[#e5eaf0]">
+                        {activeChannel === "WHATSAPP" && preview?.verifiedFacts?.whatsapp && (
+                          <a href={getWhatsAppDeepLink(preview.verifiedFacts.whatsapp, displayMessage as string) || undefined} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                            Open WhatsApp
+                          </a>
+                        )}
+                        {activeChannel === "EMAIL" && lead.email && (
+                          <>
+                            <a href={getEmailMailto(lead.email, (displaySubject as string) || `Website improvement for ${lead.name}`, displayMessage as string) || undefined} target="_blank" rel="noreferrer" className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                              Open Default Mail
+                            </a>
+                            <a href="https://privateemail.com" target="_blank" rel="noreferrer" className="border border-[#dde3ea] text-[#526275] px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                              Open Webmail
+                            </a>
+                          </>
+                        )}
+                        {activeChannel === "INSTAGRAM" && igUrl && (
+                          <a href={igUrl} target="_blank" rel="noreferrer" className="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                            Open Instagram
+                          </a>
+                        )}
+                        {/* Copy buttons */}
+                        {displaySubject && activeChannel === "EMAIL" && (
+                          <button
+                            onClick={() => navigator.clipboard.writeText(displaySubject)}
+                            className="border border-[#dde3ea] text-[#526275] px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-50"
+                          >
+                            Copy Subject
+                          </button>
+                        )}
+                        <button
+                          onClick={() => navigator.clipboard.writeText(displayMessage)}
+                          className="border border-[#dde3ea] text-[#526275] px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-50"
+                        >
+                          Copy Message
+                        </button>
+
+                        <div className="flex-1" />
+
+                        <button onClick={() => handleStatus(lead.leadId, "REPLIED")} className="bg-[#8b5cf6] text-white px-3 py-2 rounded-lg text-xs font-bold">Replied</button>
+                        <button onClick={() => handleStatus(lead.leadId, "POSITIVE")} className="bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold">Positive</button>
+                        <button onClick={() => handleStatus(lead.leadId, "WON")} className="bg-[#10b981] text-white px-3 py-2 rounded-lg text-xs font-bold">Won</button>
+                        <button onClick={() => handleStatus(lead.leadId, "LOST")} className="bg-[#ef4444] text-white px-3 py-2 rounded-lg text-xs font-bold">Lost</button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
