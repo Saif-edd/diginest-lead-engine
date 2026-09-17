@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       // HEAL: If a manual review was performed but the lead object didn't store it 
       // (due to the bug in applyQualitativeResultToLead), patch it in memory.
       if (
-        !lead.manualDecision &&
+        (!lead.manualDecision || lead.manualDecision === "NONE") &&
         lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
       ) {
         lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
 
       // HEAL
       if (
-        !lead.manualDecision &&
+        (!lead.manualDecision || lead.manualDecision === "NONE") &&
         lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
       ) {
         lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
@@ -266,7 +266,7 @@ export async function POST(request: Request) {
 
       // HEAL
       if (
-        !lead.manualDecision &&
+        (!lead.manualDecision || lead.manualDecision === "NONE") &&
         lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
       ) {
         lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
