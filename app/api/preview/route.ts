@@ -116,7 +116,11 @@ export async function POST(request: Request) {
 
       if (!isEligibleForPreview(lead.qualificationStatus, lead.manualDecision)) {
         return NextResponse.json(
-          { error: `Lead qualification (${lead.qualificationStatus}) does not permit preview studio access` },
+          { 
+            error: `Lead qualification (${lead.qualificationStatus}) does not permit preview studio access`,
+            diag_manualDecision: lead.manualDecision,
+            diag_qualResult: lead.audit?.qualitativeResult
+          },
           { status: 422 },
         );
       }
