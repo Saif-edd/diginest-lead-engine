@@ -3,6 +3,7 @@ import { isAuthorized } from "@/lib/security/auth";
 import { findOutreachByLeadId, upsertOutreachRecord, findPreviewByLeadId, findProductionLead } from "@/lib/persistence/db";
 import type { OutreachChannel, OutreachRecordStatus, CopyVariant } from "@/types/outreach";
 import { deriveTimezone } from "@/lib/outreach/timezones";
+import { recommendOutreachChannel } from "@/lib/outreach/channels";
 import { generateAllVariants, getWhatsAppDeepLink, getEmailMailto, type MessageContext } from "@/lib/outreach/messages";
 
 export const runtime = "nodejs";
@@ -36,9 +37,7 @@ export async function POST(
 
     if (body.action === "initialize" && !record) {
       // Determine recommended channel
-      let recommendedChannel: OutreachChannel = "INSTAGRAM";
-      if (lead.reachability.hasPhone) recommendedChannel = "WHATSAPP";
-      else if (lead.reachability.hasEmail) recommendedChannel = "EMAIL";
+      const recommendedChannel = recommendOutreachChannel(lead);
 
       const tz = deriveTimezone(lead.address || "");
       
@@ -101,10 +100,6 @@ export async function POST(
       }
 
       const allVariants = generateAllVariants(ctx, channel);
-      const draft = allVariants[chosenVariant.toLowerCase() as keyof typeof allVariants];
-      
-      // draft might be the AllVariants object itself if lowercase key is wrong
-      // use correct accessor:
       const chosenDraft =
         chosenVariant === "AGGRESSIVE" ? allVariants.aggressive
         : chosenVariant === "CURIOUS" ? allVariants.curious
@@ -122,8 +117,13 @@ export async function POST(
         finalPreviewUrl: ctx.finalPreviewUrl,
       });
 
-      // Also return all three variants for the UI to display
-      return NextResponse.json({ record, allVariants });
+      // Also return variants for ALL channels for the UI to display
+      const variantsByChannel = {
+        WHATSAPP: generateAllVariants(ctx, "WHATSAPP"),
+        EMAIL: generateAllVariants(ctx, "EMAIL"),
+        INSTAGRAM: generateAllVariants(ctx, "INSTAGRAM"),
+      };
+      return NextResponse.json({ record, allVariants, variantsByChannel });
     }
 
     if (body.action === "update_status") {
@@ -201,9 +201,14 @@ export async function GET(
       previewType: preview.archetype ?? null,
     };
 
-    const channel: OutreachChannel = record?.channel ?? (lead.reachability.hasPhone ? "WHATSAPP" : lead.reachability.hasEmail ? "EMAIL" : "INSTAGRAM");
+    const channel: OutreachChannel = record?.channel ?? recommendOutreachChannel(lead);
     const allVariants = generateAllVariants(ctx, channel);
-    return NextResponse.json({ record, allVariants, recommended: allVariants.recommended });
+    const variantsByChannel = {
+      WHATSAPP: generateAllVariants(ctx, "WHATSAPP"),
+      EMAIL: generateAllVariants(ctx, "EMAIL"),
+      INSTAGRAM: generateAllVariants(ctx, "INSTAGRAM"),
+    };
+    return NextResponse.json({ record, allVariants, variantsByChannel, recommended: allVariants.recommended });
   }
 
   return NextResponse.json({ record, allVariants: null });
@@ -211,3 +216,4 @@ export async function GET(
 
 // Re-export helpers for the UI's direct-link generation
 export { getWhatsAppDeepLink, getEmailMailto };
+

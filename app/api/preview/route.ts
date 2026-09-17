@@ -3,6 +3,7 @@ import { isAuthorized } from "@/lib/security/auth";
 import {
   findProductionLead,
   findPreviewByLeadId,
+  findPreviewById,
   upsertPreviewRecord,
   updatePreviewStatus,
   updatePreviewWorkflowStatus,
@@ -13,6 +14,7 @@ import {
   listAllPreviews,
   validatePreviewUrl,
 } from "@/lib/persistence/db";
+import { validateMarkReadyForOutreach } from "@/lib/preview/workflow";
 import { buildPreviewConfig } from "@/lib/preview/builder";
 import { generateSlug } from "@/lib/preview/slug";
 import { extractVerifiedFacts } from "@/lib/preview/facts";
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      let lead = await findProductionLead(body.leadId);
+      const lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
@@ -168,7 +170,7 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      let lead = await findProductionLead(body.leadId);
+      const lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
@@ -239,10 +241,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ updated: true });
     }
 
-    // ── mark_ready_for_outreach ────────────────────────────────────────────
+    // 🚀 mark_ready_for_outreach ──────────────────────────────────────────────
     if (body.action === "mark_ready_for_outreach") {
       if (!body.previewId)
         return NextResponse.json({ error: "previewId required" }, { status: 400 });
+      const existing = await findPreviewById(body.previewId);
+      const validation = validateMarkReadyForOutreach(existing);
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 422 });
+      }
       await markReadyForOutreach(body.previewId);
       return NextResponse.json({ updated: true });
     }
@@ -260,7 +267,7 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      let lead = await findProductionLead(body.leadId);
+      const lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Lead } from "@/types/lead";
-import { OutreachRecord, OutreachTimingState, CopyVariant } from "@/types/outreach";
+import { OutreachRecord, OutreachTimingState, CopyVariant, OutreachChannel } from "@/types/outreach";
 import { PreviewRecord } from "@/types/preview";
 import { getWhatsAppDeepLink, getEmailMailto, type AllVariants } from "@/lib/outreach/messages";
 import { evaluateSendWindow } from "@/lib/outreach/timezones";
@@ -11,6 +11,7 @@ type LeadId = string;
 
 interface VariantCache {
   allVariants: AllVariants;
+  variantsByChannel?: Record<OutreachChannel, AllVariants>;
   recommended: CopyVariant;
 }
 
@@ -81,10 +82,10 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
         body: JSON.stringify({ action: "generate", copyVariant: variant }),
       });
       if (res.ok) {
-        const data = await res.json() as { record: OutreachRecord; allVariants?: AllVariants };
+        const data = await res.json() as { record: OutreachRecord; allVariants?: AllVariants; variantsByChannel?: Record<OutreachChannel, AllVariants> };
         setRecords((p) => ({ ...p, [leadId]: data.record }));
         if (data.allVariants) {
-          setVariantCache((p) => ({ ...p, [leadId]: { allVariants: data.allVariants!, recommended: data.allVariants!.recommended } }));
+          setVariantCache((p) => ({ ...p, [leadId]: { allVariants: data.allVariants!, variantsByChannel: data.variantsByChannel, recommended: data.allVariants!.recommended } }));
         }
       }
     } finally {
@@ -97,9 +98,9 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
     try {
       const res = await fetch(`/api/outreach/${leadId}`);
       if (res.ok) {
-        const data = await res.json() as { record: OutreachRecord | null; allVariants: AllVariants | null; recommended: CopyVariant };
+        const data = await res.json() as { record: OutreachRecord | null; allVariants: AllVariants | null; variantsByChannel?: Record<OutreachChannel, AllVariants>; recommended: CopyVariant };
         if (data.allVariants) {
-          setVariantCache((p) => ({ ...p, [leadId]: { allVariants: data.allVariants!, recommended: data.recommended } }));
+          setVariantCache((p) => ({ ...p, [leadId]: { allVariants: data.allVariants!, variantsByChannel: data.variantsByChannel, recommended: data.recommended } }));
           setSelectedVariant((p) => ({ ...p, [leadId]: data.recommended }));
         }
       }
@@ -346,22 +347,22 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                 {/* Action bar */}
                 {displayMessage && (
                   <div className="flex flex-wrap gap-2 mt-2 pt-4 border-t border-[#e5eaf0]">
-                    {rec.channel === "WHATSAPP" && waLink && (
-                      <a href={waLink} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                    {lead.phone && (
+                      <a href={getWhatsAppDeepLink(lead.phone, (cache?.variantsByChannel?.WHATSAPP?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#25D366] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open WhatsApp
                       </a>
                     )}
-                    {rec.channel === "EMAIL" && lead.email && displaySubject && (
-                      <a href={getEmailMailto(lead.email, displaySubject, displayMessage)} target="_blank" rel="noreferrer" className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
+                    {lead.email && (
+                      <a href={getEmailMailto(lead.email, (cache?.variantsByChannel?.EMAIL?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.subject as string) || (displaySubject as string) || `Website improvement for ${lead.name}`, (cache?.variantsByChannel?.EMAIL?.[active.toLowerCase() as "aggressive" | "curious" | "clean"]?.message as string) || (displayMessage as string)) || undefined} target="_blank" rel="noreferrer" className="bg-[#00aaca] text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open Default Mail
                       </a>
                     )}
-                    {rec.channel === "EMAIL" && (
+                    {lead.email && (
                       <a href="https://privateemail.com" target="_blank" rel="noreferrer" className="border border-[#dde3ea] text-[#526275] px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open Webmail
                       </a>
                     )}
-                    {rec.channel === "INSTAGRAM" && lead.socialUrl && (
+                    {lead.socialUrl && (
                       <a href={lead.socialUrl} target="_blank" rel="noreferrer" className="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold" onClick={() => handleStatus(lead.leadId, "CONTACTED")}>
                         Open Instagram
                       </a>
@@ -407,3 +408,6 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
+
+
+

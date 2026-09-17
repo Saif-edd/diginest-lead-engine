@@ -3732,7 +3732,7 @@ function PreviewStudioView({
 
     if (!ws || ws === "undefined" || ws === "null" || ws === "NOT_STARTED") {
       if (legacy === "READY") {
-        ws = finalUrl ? "READY_FOR_OUTREACH" : "PREVIEW_LINK_ADDED";
+        ws = finalUrl ? "READY_FOR_OUTREACH" : (hasPrompt ? "PROMPT_READY" : "BRIEF_READY");
       } else if (legacy === "DRAFT") {
         ws = hasPrompt ? "PROMPT_READY" : "BRIEF_READY";
       } else {
