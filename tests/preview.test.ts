@@ -642,6 +642,40 @@ describe("validatePreviewUrl", () => {
   });
 });
 
+function isEligibleForPreview(
+  qualificationStatus: string,
+  manualDecision: string | undefined,
+  allowHold = false,
+): boolean {
+  return (
+    qualificationStatus === "QUALIFIED" ||
+    manualDecision === "QUALIFY" ||
+    (allowHold && (qualificationStatus === "HOLD" || manualDecision === "HOLD"))
+  );
+}
+
+describe("preview eligibility logic", () => {
+  it("rejects purely automatic leads that are not QUALIFIED", () => {
+    expect(isEligibleForPreview("PENDING QUALITATIVE AUDIT", undefined)).toBe(false);
+    expect(isEligibleForPreview("REVIEW", undefined)).toBe(false);
+  });
+
+  it("accepts explicitly QUALIFIED automatic leads", () => {
+    expect(isEligibleForPreview("QUALIFIED", undefined)).toBe(true);
+  });
+
+  it("accepts manually reviewed QUALIFY leads even if global status is PENDING WEBSITE AUDIT", () => {
+    // This exact condition blocked Vision Dental before the memory heal fix
+    expect(isEligibleForPreview("PENDING WEBSITE AUDIT", "QUALIFY")).toBe(true);
+  });
+
+  it("respects HOLD if allowHold is true", () => {
+    expect(isEligibleForPreview("HOLD", undefined, true)).toBe(true);
+    expect(isEligibleForPreview("PENDING", "HOLD", true)).toBe(true);
+    expect(isEligibleForPreview("HOLD", undefined, false)).toBe(false);
+  });
+});
+
 // ─── Sprint 3A: V0 Workflow Status Semantics ─────────────────────────────────
 
 describe("V0 workflow status semantics", () => {

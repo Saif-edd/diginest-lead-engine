@@ -219,16 +219,16 @@ function buildObservation(ctx: MessageContext, category: ProblemCategory): strin
       ratingLine ? `${ctx.businessName} has ${ratingLine} — strong social proof. But it doesn't appear prominently on the first screen.` : `${ctx.businessName} has solid proof, but it's not visible on the opening section.`,
     ],
     CTA_WEAK: [
-      `There's no prominent booking or contact action visible on the first screen of ${ctx.currentWebsite || "your site"}.`,
+      `There's no prominent booking or contact action visible on the first screen for ${ctx.businessName}.`,
     ],
     BOOKING_PATH_UNCLEAR: [
-      `Booking an appointment on your site requires more clicks than most patients will take.`,
+      ratingLine ? `For a clinic with ${ratingLine}, booking an appointment on your site requires more clicks than most patients will take.` : `Booking an appointment for ${ctx.businessName} requires more clicks than most patients will take.`,
     ],
     MOBILE_FIRST_SCREEN: [
-      `On mobile, the first screen of ${ctx.currentWebsite || "your site"} doesn't lead the visitor to a clear next step.`,
+      `On mobile, the first screen for ${ctx.businessName} doesn't lead the visitor to a clear next step.`,
     ],
     POPUP_BLOCKING_ENTRY: [
-      `A popup is the first thing visitors see — before your clinic brand, before your offer.`,
+      `A popup is the first thing visitors see for ${ctx.businessName} — before your clinic brand, before your offer.`,
     ],
     GENERIC_HERO: [
       `The opening section of ${ctx.currentWebsite || "your site"} doesn't immediately tell a visitor what makes ${ctx.businessName} the right choice.`,
@@ -240,13 +240,13 @@ function buildObservation(ctx: MessageContext, category: ProblemCategory): strin
       ratingLine ? `${ctx.businessName} has ${ratingLine} from patients in ${ctx.city} — but this trust isn't visible on the opening section.` : `Local trust signals for ${ctx.businessName} in ${ctx.city} aren't front and centre.`,
     ],
     VISUAL_HIERARCHY: [
-      `The visual hierarchy on ${ctx.currentWebsite || "your site"} makes it hard for a first-time visitor to know where to look first.`,
+      ratingLine ? `You have ${ratingLine}, but that level of trust isn't doing enough work on the first screen due to the current visual hierarchy.` : `The visual hierarchy for ${ctx.businessName} makes it hard for a first-time visitor to know where to look first.`,
     ],
     OUTDATED_VISUAL_STRUCTURE: [
-      `The current design structure of ${ctx.currentWebsite || "your site"} doesn't reflect the quality of care that ${ctx.businessName} provides.`,
+      ratingLine ? `For a clinic with ${ratingLine}, the current visual structure doesn't reflect the quality of care that ${ctx.businessName} provides.` : `The current design structure doesn't reflect the quality of care that ${ctx.businessName} provides.`,
     ],
     UNKNOWN: [
-      `Looking at ${ctx.currentWebsite || "your site"}, I noticed: ${ctx.mainProblem}.`,
+      `Looking at ${ctx.businessName}, I noticed: ${ctx.mainProblem}.`,
     ],
   };
 

@@ -160,6 +160,20 @@ describe("Copy Engine V2 – generateAllVariants", () => {
     expect(hasRating).toBe(true);
   });
 
+  it("injects specific facts into problem-specific templates and passes quality gate", () => {
+    // VISUAL_HIERARCHY previously failed NO_SPECIFIC_FACT
+    const ctx = makeCtx({ mainProblem: "trust signals are buried below the first screen", rating: 4.9, reviewCount: 1070 });
+    const result = generateAllVariants(ctx, "WHATSAPP");
+    
+    // Check that it passed
+    expect(result.aggressive.passed).toBe(true);
+    expect(result.curious.passed).toBe(true);
+    expect(result.clean.passed).toBe(true);
+
+    // It should NOT contain NO_SPECIFIC_FACT
+    expect(result.aggressive.qualityFlags).not.toContain("NO_SPECIFIC_FACT");
+  });
+
   it("does not fabricate content when no rating is provided", () => {
     const ctx = makeCtx({ rating: null, reviewCount: null });
     const result = generateAllVariants(ctx, "WHATSAPP");

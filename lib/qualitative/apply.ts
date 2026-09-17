@@ -83,6 +83,15 @@ export function applyQualitativeResultToLead(
     previewAngle: result.recommendedPreviewFocus,
     recommendedVariant: result.recommendedHeroAngle,
   };
+  
+  // Explicitly map manual reviews so they aren't lost
+  if (result.qualificationDecisionSource === "MANUAL_REVIEW") {
+    next.manualDecision = result.qualificationDecision;
+    next.qualificationDecisionSource = "MANUAL_REVIEW";
+  } else if (result.qualificationDecisionSource === "AI_QUALIFICATION") {
+    next.qualificationDecisionSource = "AI_QUALIFICATION";
+  }
+
   const score = calculateLeadScore(next);
   const automaticQualification = automaticQualificationFor({
     hasWebsite: next.hasWebsite,

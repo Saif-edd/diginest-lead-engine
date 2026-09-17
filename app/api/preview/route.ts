@@ -101,9 +101,18 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      const lead = await findProductionLead(body.leadId);
+      let lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+
+      // HEAL: If a manual review was performed but the lead object didn't store it 
+      // (due to the bug in applyQualitativeResultToLead), patch it in memory.
+      if (
+        !lead.manualDecision &&
+        lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
+      ) {
+        lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
+      }
 
       if (!isEligibleForPreview(lead.qualificationStatus, lead.manualDecision)) {
         return NextResponse.json(
@@ -155,9 +164,17 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      const lead = await findProductionLead(body.leadId);
+      let lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+
+      // HEAL
+      if (
+        !lead.manualDecision &&
+        lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
+      ) {
+        lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
+      }
 
       if (!isEligibleForPreview(lead.qualificationStatus, lead.manualDecision)) {
         return NextResponse.json(
@@ -239,9 +256,17 @@ export async function POST(request: Request) {
       if (!body.leadId)
         return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
-      const lead = await findProductionLead(body.leadId);
+      let lead = await findProductionLead(body.leadId);
       if (!lead)
         return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+
+      // HEAL
+      if (
+        !lead.manualDecision &&
+        lead.audit?.qualitativeResult?.qualificationDecisionSource === "MANUAL_REVIEW"
+      ) {
+        lead.manualDecision = lead.audit.qualitativeResult.qualificationDecision;
+      }
 
       const eligible = isEligibleForPreview(
         lead.qualificationStatus,
