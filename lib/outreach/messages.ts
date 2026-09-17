@@ -27,7 +27,7 @@ export interface MessageContext {
   finalPreviewUrl: string;
   previewType?: string | null;
   verifiedServices?: string[];
-  channel?: "WHATSAPP" | "EMAIL" | "INSTAGRAM";
+  channel?: "WHATSAPP" | "EMAIL" | "INSTAGRAM" | "NONE";
 }
 
 export interface CopyDraft {
@@ -436,7 +436,7 @@ ${cta}`;
 
 export function generateAllVariants(
   ctx: MessageContext,
-  channel: "WHATSAPP" | "EMAIL" | "INSTAGRAM" = "WHATSAPP",
+  channel: "WHATSAPP" | "EMAIL" | "INSTAGRAM" | "NONE" = "WHATSAPP",
 ): AllVariants {
   const gen =
     channel === "WHATSAPP" ? generateWhatsAppDraft
@@ -490,3 +490,5 @@ export function getWhatsAppDeepLink(phone: string, text: string): string | null 
 export function getEmailMailto(email: string, subject: string, body: string): string {
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
+
+

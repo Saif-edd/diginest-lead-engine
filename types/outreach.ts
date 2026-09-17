@@ -1,4 +1,4 @@
-export const outreachChannels = ["WHATSAPP", "EMAIL", "INSTAGRAM"] as const;
+export const outreachChannels = ["WHATSAPP", "EMAIL", "INSTAGRAM", "NONE"] as const;
 export type OutreachChannel = (typeof outreachChannels)[number];
 
 export const outreachTimingStatuses = ["SEND_NOW", "WAIT", "REVIEW_TIMEZONE"] as const;
