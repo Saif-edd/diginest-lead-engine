@@ -76,8 +76,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    // OVERRIDE: gemini-3.8-flash is currently experiencing an active outage (503), falling back to 3.6-flash
-    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.6-flash") ?? "gpt-4o-mini",
+    modelVersion = "gpt-4o-mini",
   ) {
     this.modelVersion = modelVersion;
   }
@@ -89,10 +88,6 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
       ];
-      // OVERRIDE: Drop screenshot to bypass Gemini TPM strict limits which cause 429/503
-      // if (input.screenshotDataUrl) {
-      //   userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl, detail: "high" } });
-      // }
       const request = {
         method: "POST",
         headers: {
@@ -113,7 +108,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       let response: Response | undefined;
       let payload: Record<string, unknown> = {};
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        response = await fetch(`${providerEndpoint()}/chat/completions`, request);
+        response = await fetch(`https://api.openai.com/v1/chat/completions`, request);
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
