@@ -119,7 +119,7 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
                   <div>
                     <div className="font-bold text-lg text-[#17243a]">{lead.name}</div>
                     <a href={preview.finalPreviewUrl!} target="_blank" rel="noreferrer" className="text-sm text-teal-600 hover:underline">
-                      Preview Link â†—
+                      Preview Link ↗
                     </a>
                   </div>
 

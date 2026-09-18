@@ -1484,7 +1484,7 @@ function WebsiteAuditView({
         <span>
           <strong className="text-[#176b7d]">{qualitativeEligibleCount}</strong> ready for qualitative analysis
         </span>
-        <span className="text-[#c2d6dc]">Â·</span>
+        <span className="text-[#c2d6dc]">·</span>
         <span>Default batch is 20; maximum is 50.</span>
       </div>
       <div className="rounded-xl border border-[#e5eaf0] bg-white p-3 shadow-[0_2px_8px_rgba(15,35,58,.025)]">
