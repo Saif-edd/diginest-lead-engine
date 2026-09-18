@@ -76,7 +76,8 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    modelVersion = "gpt-4o-mini",
+    // OVERRIDE: gemini-3.8-flash is currently experiencing an active outage (503), falling back to 3.7-flash
+    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.7-flash") ?? "gpt-4o-mini",
   ) {
     this.modelVersion = modelVersion;
   }
@@ -108,7 +109,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       let response: Response | undefined;
       let payload: Record<string, unknown> = {};
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        response = await fetch(`https://api.openai.com/v1/chat/completions`, request);
+        response = await fetch(`${providerEndpoint()}/chat/completions`, request);
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
