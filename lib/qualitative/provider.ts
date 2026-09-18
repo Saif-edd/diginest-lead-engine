@@ -76,14 +76,15 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8", "3.6") ?? "gpt-4o-mini",
+    // OVERRIDE: gemini-3.8-flash is currently experiencing an active outage (503), falling back to 3.6-flash
+    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.6-flash") ?? "gpt-4o-mini",
   ) {
     this.modelVersion = modelVersion;
   }
 
   async analyze(input: QualitativeAnalysisInput) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 20000));
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 45000));
     try {
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
