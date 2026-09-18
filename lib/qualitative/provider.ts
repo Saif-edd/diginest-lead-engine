@@ -76,7 +76,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    modelVersion = process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini",
+    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8", "3.6") ?? "gpt-4o-mini",
   ) {
     this.modelVersion = modelVersion;
   }
