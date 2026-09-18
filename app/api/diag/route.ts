@@ -28,10 +28,8 @@ export async function GET(request: Request) {
   }
 
   const results = await Promise.all([
-    testModel("gemini-1.5-flash"),
-    testModel("gemini-2.0-flash"),
-    testModel("gemini-1.5-pro"),
-    testModel(process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini")
+    testModel("gemini-3.6-flash"),
+    testModel("gemini-3.8-flash")
   ]);
 
   return NextResponse.json({
