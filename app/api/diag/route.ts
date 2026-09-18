@@ -34,8 +34,7 @@ export async function GET(request: Request) {
   ];
   const results = await Promise.all(modelsToTest.map(testModel));
 
-  const key = process.env.QUALITATIVE_AI_API_KEY || "";
-  
+
   const getModels = async () => {
     try {
       const url = (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
@@ -53,7 +52,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     config: {
       baseUrl: process.env.QUALITATIVE_AI_BASE_URL,
-      keyPrefix: key.slice(0, 4),
+      keyPrefix: key ? key.slice(0, 4) : "NONE",
       envKeys
     },
     availableModels
