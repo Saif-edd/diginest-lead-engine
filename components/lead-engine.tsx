@@ -4373,7 +4373,16 @@ export function LeadEngine() {
   }
 
   async function analyzeSelected(ids: string[]) {
-    for (const id of ids) await analyzeLead(id);
+    const limit = 4;
+    const executing = new Set<Promise<void>>();
+    for (const id of ids) {
+      const p = analyzeLead(id).finally(() => executing.delete(p));
+      executing.add(p);
+      if (executing.size >= limit) {
+        await Promise.race(executing);
+      }
+    }
+    await Promise.all(executing);
   }
 
   async function analyzeNext(count: number) {

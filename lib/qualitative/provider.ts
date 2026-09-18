@@ -82,10 +82,8 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
   }
 
   async analyze(input: QualitativeAnalysisInput) {
-    const safeUrl = providerEndpoint().replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
-    throw new QualitativeProviderError(`DEBUG_CONFIG: ${safeUrl} | ${this.modelVersion}`, "PROVIDER_ERROR");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 60000));
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 20000));
     try {
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
@@ -117,14 +115,14 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
-        if (![500, 502, 503, 504].includes(response.status) || attempt === 2) {
+        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
           const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
           const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : rawBody.trim() || undefined;
           const retryAfter = response.headers.get("retry-after");
           const suffix = retryAfter ? ` (retry-after: ${retryAfter})` : "";
           throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}${suffix}`.slice(0, 500), "PROVIDER_ERROR");
         }
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, 2000 * Math.pow(2, attempt)));
       }
       if (!response?.ok) throw new QualitativeProviderError("Qualitative provider request failed", "PROVIDER_ERROR");
       const choices = Array.isArray(payload.choices) ? payload.choices : [];
@@ -143,9 +141,8 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       }
     } catch (error) {
       if (error instanceof QualitativeProviderError) throw error;
-      const safeUrl = providerEndpoint().replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
-      if (error instanceof Error && error.name === "AbortError") throw new QualitativeProviderError(`Qualitative provider timed out (${safeUrl} - ${this.modelVersion})`, "TIMEOUT");
-      throw new QualitativeProviderError(error instanceof Error ? error.message.slice(0, 500) : `Qualitative provider request failed (${safeUrl} - ${this.modelVersion})`, "PROVIDER_ERROR");
+      if (error instanceof Error && error.name === "AbortError") throw new QualitativeProviderError("Qualitative provider timed out", "TIMEOUT");
+      throw new QualitativeProviderError(error instanceof Error ? error.message.slice(0, 500) : "Qualitative provider request failed", "PROVIDER_ERROR");
     } finally {
       clearTimeout(timeout);
     }
