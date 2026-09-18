@@ -108,19 +108,19 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       };
       let response: Response | undefined;
       let payload: Record<string, unknown> = {};
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
         response = await fetch(`${providerEndpoint()}/chat/completions`, request);
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
-        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) {
+        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 9) {
           const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
           const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : rawBody.trim() || undefined;
           const retryAfter = response.headers.get("retry-after");
           const suffix = retryAfter ? ` (retry-after: ${retryAfter})` : "";
           throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}${suffix}`.slice(0, 500), "PROVIDER_ERROR");
         }
-        await new Promise((resolve) => setTimeout(resolve, 2000 * Math.pow(2, attempt)));
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
       }
       if (!response?.ok) throw new QualitativeProviderError("Qualitative provider request failed", "PROVIDER_ERROR");
       const choices = Array.isArray(payload.choices) ? payload.choices : [];
