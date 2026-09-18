@@ -76,8 +76,8 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    // OVERRIDE: gemini-3.8-flash is currently experiencing an active outage (503), falling back to 3.7-flash
-    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.7-flash") ?? "gpt-4o-mini",
+    // OVERRIDE: gemini-3.8-flash (503) and 3.7-flash (503) are down, falling back to 3.5-flash
+    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.5-flash") ?? "gpt-4o-mini",
   ) {
     this.modelVersion = modelVersion;
   }
