@@ -82,6 +82,8 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
   }
 
   async analyze(input: QualitativeAnalysisInput) {
+    const safeUrl = providerEndpoint().replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
+    throw new QualitativeProviderError(`DEBUG_CONFIG: ${safeUrl} | ${this.modelVersion}`, "PROVIDER_ERROR");
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 60000));
     try {
