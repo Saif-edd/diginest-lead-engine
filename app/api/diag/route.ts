@@ -36,21 +36,18 @@ export async function GET(request: Request) {
 
   const key = process.env.QUALITATIVE_AI_API_KEY || "";
   
-  const testProvider = async (url: string) => {
+  const getModels = async () => {
     try {
+      const url = (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
       const r = await fetch(url + "/models", { headers: { authorization: `Bearer ${key}` } });
-      return { url, status: r.status, ok: r.ok };
-    } catch {
-      return { url, error: "fetch failed" };
+      const data = await r.json();
+      return data;
+    } catch (e) {
+      return { error: String(e) };
     }
   };
 
-  const providers = await Promise.all([
-    testProvider("https://api.openai.com/v1"),
-    testProvider("https://api.groq.com/openai/v1"),
-    testProvider("https://openrouter.ai/api/v1"),
-    testProvider("https://api.together.xyz/v1")
-  ]);
+  const availableModels = await getModels();
 
   const envKeys = Object.keys(process.env).filter(k => k.includes('AI') || k.includes('API') || k.includes('TOKEN') || k.includes('KEY'));
   return NextResponse.json({
@@ -59,7 +56,6 @@ export async function GET(request: Request) {
       keyPrefix: key.slice(0, 4),
       envKeys
     },
-    providers,
-    results
+    availableModels
   });
 }
