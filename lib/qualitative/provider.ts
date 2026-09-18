@@ -89,9 +89,10 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
       ];
-      if (input.screenshotDataUrl) {
-        userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl, detail: "high" } });
-      }
+      // OVERRIDE: Drop screenshot to bypass Gemini TPM strict limits which cause 429/503
+      // if (input.screenshotDataUrl) {
+      //   userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl, detail: "high" } });
+      // }
       const request = {
         method: "POST",
         headers: {
