@@ -28,16 +28,18 @@ export async function GET(request: Request) {
   }
 
   const modelsToTest = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-2.0-flash",
+    "gemini-pro",
+    "gemini-1.0-pro",
+    "gemini-1.5-flash-latest",
   ];
   const results = await Promise.all(modelsToTest.map(testModel));
 
+  const keyPrefix = process.env.QUALITATIVE_AI_API_KEY ? process.env.QUALITATIVE_AI_API_KEY.slice(0, 4) : "NONE";
   return NextResponse.json({
     config: {
       baseUrl: process.env.QUALITATIVE_AI_BASE_URL,
       model: process.env.QUALITATIVE_AI_MODEL,
+      keyPrefix
     },
     results
   });
