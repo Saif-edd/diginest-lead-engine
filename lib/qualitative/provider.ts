@@ -141,8 +141,9 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       }
     } catch (error) {
       if (error instanceof QualitativeProviderError) throw error;
-      if (error instanceof Error && error.name === "AbortError") throw new QualitativeProviderError("Qualitative provider timed out", "TIMEOUT");
-      throw new QualitativeProviderError(error instanceof Error ? error.message.slice(0, 500) : "Qualitative provider request failed", "PROVIDER_ERROR");
+      const safeUrl = providerEndpoint().replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
+      if (error instanceof Error && error.name === "AbortError") throw new QualitativeProviderError(`Qualitative provider timed out (${safeUrl} - ${this.modelVersion})`, "TIMEOUT");
+      throw new QualitativeProviderError(error instanceof Error ? error.message.slice(0, 500) : `Qualitative provider request failed (${safeUrl} - ${this.modelVersion})`, "PROVIDER_ERROR");
     } finally {
       clearTimeout(timeout);
     }
