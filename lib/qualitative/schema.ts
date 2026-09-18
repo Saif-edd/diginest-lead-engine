@@ -79,10 +79,13 @@ function evidence(value: unknown, field: string): QualitativeEvidenceReference[]
 }
 
 function dimension(value: unknown, key: QualitativeDimensionKey, maxScore: number) {
-  const entry = record(value, `dimensions.${key}`);
+  if (typeof value !== "object" || value === null) {
+    throw new QualitativeValidationError(`Invalid dimension object at dimensions.${key}`);
+  }
+  const entry = value as Record<string, unknown>;
   return {
     score: numberValue(entry.score, `dimensions.${key}.score`, 0, maxScore),
-    maxScore: numberValue(entry.maxScore, `dimensions.${key}.maxScore`, maxScore, maxScore),
+    maxScore: maxScore,
     severity: enumValue(entry.severity, `dimensions.${key}.severity`, severities),
     reason: stringValue(entry.reason, `dimensions.${key}.reason`),
     evidenceUsed: evidence(entry.evidenceUsed, `dimensions.${key}.evidenceUsed`),
@@ -91,10 +94,13 @@ function dimension(value: unknown, key: QualitativeDimensionKey, maxScore: numbe
 }
 
 function scoredComponent(value: unknown, field: string, maxScore: number): QualitativeScoredComponent {
-  const entry = record(value, field);
+  if (typeof value !== "object" || value === null) {
+    throw new QualitativeValidationError(`Invalid scored component at ${field}`);
+  }
+  const entry = value as Record<string, unknown>;
   return {
     score: numberValue(entry.score, `${field}.score`, 0, maxScore),
-    maxScore: numberValue(entry.maxScore, `${field}.maxScore`, maxScore, maxScore),
+    maxScore: maxScore,
     evidenceUsed: evidence(entry.evidenceUsed, `${field}.evidenceUsed`),
     confidence: enumValue(entry.confidence, `${field}.confidence`, confidences),
   };
