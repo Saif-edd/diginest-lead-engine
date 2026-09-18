@@ -28,9 +28,9 @@ export async function GET(request: Request) {
   }
 
   const modelsToTest = [
-    "gemini-pro",
-    "gemini-1.0-pro",
-    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash-exp",
+    "gemini-1.5-flash-002",
   ];
   const results = await Promise.all(modelsToTest.map(testModel));
 
