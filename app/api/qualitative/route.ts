@@ -27,7 +27,7 @@ function failureMessage(error: unknown) {
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (!checkRateLimit(request, 6)) return NextResponse.json({ error: "Qualitative analysis rate limit exceeded" }, { status: 429 });
+  if (!checkRateLimit(request, 60)) return NextResponse.json({ error: "Qualitative analysis rate limit exceeded" }, { status: 429 });
   try {
     const body = await request.json() as { leadId?: string; retryCount?: number; idempotencyKey?: string };
     if (!body.leadId) return NextResponse.json({ error: "leadId is required" }, { status: 400 });
