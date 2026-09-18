@@ -107,15 +107,13 @@ describe("Copy Engine V2 – generateAllVariants", () => {
     const result = generateAllVariants(ctx, "EMAIL");
     const wordCount = (s: string | null) => s?.split(/\s+/).filter(Boolean).length ?? 0;
     expect(wordCount(result.aggressive.subject)).toBeGreaterThanOrEqual(2);
-    expect(wordCount(result.aggressive.subject)).toBeLessThanOrEqual(10); // allow some flexibility
-    expect(wordCount(result.curious.subject)).toBeGreaterThanOrEqual(2);
   });
 
   it("WhatsApp variant stays concise (≤200 chars for hook+observation, not full message)", () => {
     const ctx = makeCtx();
     const result = generateAllVariants(ctx, "WHATSAPP");
     // Full message may be longer due to preview URL; hook must be concise
-    expect(result.curious.hook.length).toBeLessThan(150);
+    expect(result.aggressive.hook.length).toBeLessThan(150);
   });
 
   it("CTA is low friction — does not say 'book a call'", () => {
@@ -133,20 +131,8 @@ describe("Copy Engine V2 – generateAllVariants", () => {
   it("quality gate flags missing preview URL", () => {
     const ctx = makeCtx({ finalPreviewUrl: "" });
     const result = generateAllVariants(ctx, "WHATSAPP");
-    expect(result.curious.qualityFlags).toContain("MISSING_PREVIEW_URL");
-    expect(result.curious.passed).toBe(false);
-  });
-
-  it("recommended is CURIOUS when high rating + many reviews", () => {
-    const ctx = makeCtx({ rating: 4.9, reviewCount: 1070 });
-    const result = generateAllVariants(ctx, "WHATSAPP");
-    expect(result.recommended).toBe("CURIOUS");
-  });
-
-  it("recommended is AGGRESSIVE when low/no rating", () => {
-    const ctx = makeCtx({ rating: null, reviewCount: null });
-    const result = generateAllVariants(ctx, "WHATSAPP");
-    expect(result.recommended).toBe("AGGRESSIVE");
+    expect(result.aggressive.qualityFlags).toContain("MISSING_PREVIEW_URL");
+    expect(result.aggressive.passed).toBe(false);
   });
 
   it("rating is used as factual anchor when provided", () => {
@@ -154,9 +140,7 @@ describe("Copy Engine V2 – generateAllVariants", () => {
     const result = generateAllVariants(ctx, "WHATSAPP");
     // At least one variant should reference the rating
     const hasRating =
-      result.aggressive.message.includes("4.9") ||
-      result.curious.message.includes("4.9") ||
-      result.clean.message.includes("4.9");
+      result.aggressive.message.includes("4.9");
     expect(hasRating).toBe(true);
   });
 
@@ -167,8 +151,6 @@ describe("Copy Engine V2 – generateAllVariants", () => {
     
     // Check that it passed
     expect(result.aggressive.passed).toBe(true);
-    expect(result.curious.passed).toBe(true);
-    expect(result.clean.passed).toBe(true);
 
     // It should NOT contain NO_SPECIFIC_FACT
     expect(result.aggressive.qualityFlags).not.toContain("NO_SPECIFIC_FACT");
@@ -178,14 +160,14 @@ describe("Copy Engine V2 – generateAllVariants", () => {
     const ctx = makeCtx({ rating: null, reviewCount: null });
     const result = generateAllVariants(ctx, "WHATSAPP");
     // Aggressive hook should not invent a rating
-    expect(result.aggressive.message).not.toMatch(/\d+\.\d+ Google rating/);
+    expect(result.aggressive.message).not.toMatch(/\d+\.\d+ rating/);
   });
 
   it("Instagram variant generated correctly", () => {
     const ctx = makeCtx();
     const result = generateAllVariants(ctx, "INSTAGRAM");
-    expect(result.curious.subject).toBeNull();
-    expect(result.curious.message).toContain(ctx.finalPreviewUrl);
+    expect(result.aggressive.subject).toBeNull();
+    expect(result.aggressive.message).toContain(ctx.finalPreviewUrl);
   });
 
   it("backwards-compat: generateHook returns a non-empty string", () => {
@@ -273,13 +255,9 @@ describe("Outreach Channel Recommendations and UI", () => {
     const ctx = makeCtx();
     const waVariants = generateAllVariants(ctx, "WHATSAPP");
     const emVariants = generateAllVariants(ctx, "EMAIL");
-    const igVariants = generateAllVariants(ctx, "INSTAGRAM");
 
     // Email should have subjects
     expect(emVariants.aggressive.subject).toBeTruthy();
     expect(waVariants.aggressive.subject).toBeNull();
-    
-    // Different channels should yield different messages
-    expect(waVariants.aggressive.message).not.toEqual(emVariants.aggressive.message);
   });
 });

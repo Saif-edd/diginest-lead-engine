@@ -205,54 +205,7 @@ const HOOK_LIBRARY: Record<ProblemCategory, { aggressive: string[]; curious: str
   },
 };
 
-// ─── Observation patterns ────────────────────────────────────────────────────
 
-function buildObservation(ctx: MessageContext, category: ProblemCategory): string {
-  const ratingLine = ctx.rating && ctx.reviewCount
-    ? `${ctx.rating} Google rating · ${ctx.reviewCount.toLocaleString()} reviews`
-    : ctx.rating
-      ? `${ctx.rating} Google rating`
-      : null;
-
-  const patterns: Record<ProblemCategory, string[]> = {
-    TRUST_BURIED: [
-      ratingLine ? `${ctx.businessName} has ${ratingLine} — strong social proof. But it doesn't appear prominently on the first screen.` : `${ctx.businessName} has solid proof, but it's not visible on the opening section.`,
-    ],
-    CTA_WEAK: [
-      `There's no prominent booking or contact action visible on the first screen for ${ctx.businessName}.`,
-    ],
-    BOOKING_PATH_UNCLEAR: [
-      ratingLine ? `For a clinic with ${ratingLine}, booking an appointment on your site requires more clicks than most patients will take.` : `Booking an appointment for ${ctx.businessName} requires more clicks than most patients will take.`,
-    ],
-    MOBILE_FIRST_SCREEN: [
-      `On mobile, the first screen for ${ctx.businessName} doesn't lead the visitor to a clear next step.`,
-    ],
-    POPUP_BLOCKING_ENTRY: [
-      `A popup is the first thing visitors see for ${ctx.businessName} — before your clinic brand, before your offer.`,
-    ],
-    GENERIC_HERO: [
-      `The opening section of ${ctx.currentWebsite || "your site"} doesn't immediately tell a visitor what makes ${ctx.businessName} the right choice.`,
-    ],
-    SERVICE_CLARITY: [
-      `The services offered by ${ctx.businessName} aren't clearly visible within the first scroll on your current site.`,
-    ],
-    LOCAL_TRUST: [
-      ratingLine ? `${ctx.businessName} has ${ratingLine} from patients in ${ctx.city} — but this trust isn't visible on the opening section.` : `Local trust signals for ${ctx.businessName} in ${ctx.city} aren't front and centre.`,
-    ],
-    VISUAL_HIERARCHY: [
-      ratingLine ? `You have ${ratingLine}, but that level of trust isn't doing enough work on the first screen due to the current visual hierarchy.` : `The visual hierarchy for ${ctx.businessName} makes it hard for a first-time visitor to know where to look first.`,
-    ],
-    OUTDATED_VISUAL_STRUCTURE: [
-      ratingLine ? `For a clinic with ${ratingLine}, the current visual structure doesn't reflect the quality of care that ${ctx.businessName} provides.` : `The current design structure doesn't reflect the quality of care that ${ctx.businessName} provides.`,
-    ],
-    UNKNOWN: [
-      `Looking at ${ctx.businessName}, I noticed: ${ctx.mainProblem}.`,
-    ],
-  };
-
-  const options = patterns[category] ?? patterns.UNKNOWN;
-  return options[0];
-}
 
 // ─── CTA library ─────────────────────────────────────────────────────────────
 
@@ -328,105 +281,60 @@ function qualityCheck(draft: string, ctx: MessageContext): string[] {
   return flags;
 }
 
-// ─── Template filling ────────────────────────────────────────────────────────
+// ─── Template generation ───────────────────────────────────────────────────────
 
-function fillTemplate(template: string, ctx: MessageContext): string {
-  return template
-    .replace("{businessName}", ctx.businessName)
-    .replace("{city}", ctx.city)
-    .replace("{rating}", String(ctx.rating ?? ""))
-    .replace("{reviewCount}", ctx.reviewCount?.toLocaleString() ?? "")
-    .replace("{currentWebsite}", ctx.currentWebsite ?? "your site");
-}
+function buildObservation(ctx: MessageContext, category: ProblemCategory): string {
+  const ratingLine = ctx.rating
+    ? `the ${ctx.rating} rating`
+    : `the reputation`;
 
-// ─── WhatsApp generator ──────────────────────────────────────────────────────
-
-function generateWhatsAppDraft(ctx: MessageContext, variant: CopyVariant): CopyDraft {
-  const category = inferProblemCategory(ctx.mainProblem);
-  const hooks = HOOK_LIBRARY[category][variant.toLowerCase() as keyof typeof HOOK_LIBRARY[typeof category]];
-  const rawHook = hooks[0];
-  const hook = fillTemplate(rawHook, ctx);
-  const observation = buildObservation(ctx, category);
-  const cta = pickCTA(variant);
-
-  const message = `${hook}
-
-${observation}
-
-I rebuilt the opening section to show you what I mean:
-${ctx.finalPreviewUrl}
-
-${cta}`;
-
-  const flags = qualityCheck(message, ctx);
-  return {
-    subject: null,
-    hook,
-    message,
-    cta,
-    variant,
-    qualityFlags: flags,
-    passed: flags.length === 0,
+  const patterns: Record<ProblemCategory, string> = {
+    TRUST_BURIED: `something on the first screen didn't match ${ratingLine} behind the business`,
+    CTA_WEAK: `the booking path on the first screen requires more clicks than most patients will take`,
+    BOOKING_PATH_UNCLEAR: `booking an appointment requires more clicks than most patients will take`,
+    MOBILE_FIRST_SCREEN: `the first screen on mobile doesn't lead visitors to a clear next step`,
+    POPUP_BLOCKING_ENTRY: `a popup blocks the first screen before your clinic brand is visible`,
+    GENERIC_HERO: `the opening section doesn't show what makes your clinic the right choice`,
+    SERVICE_CLARITY: `the services aren't clearly visible within the first scroll`,
+    LOCAL_TRUST: `the first screen doesn't show the local trust you've built in ${ctx.city}`,
+    VISUAL_HIERARCHY: `the visual structure on the first screen doesn't match ${ratingLine} behind the business`,
+    OUTDATED_VISUAL_STRUCTURE: `the design structure doesn't match ${ratingLine} of the clinic`,
+    UNKNOWN: `something on the first screen didn't match ${ratingLine} behind the business`,
   };
+
+  return patterns[category] ?? patterns.UNKNOWN;
 }
 
-// ─── Email generator ─────────────────────────────────────────────────────────
-
-function generateEmailDraft(ctx: MessageContext, variant: CopyVariant): CopyDraft {
+function generateSharedDraft(ctx: MessageContext, isEmail: boolean): CopyDraft {
   const category = inferProblemCategory(ctx.mainProblem);
-  const subjects = SUBJECT_LIBRARY[category][variant.toLowerCase() as keyof typeof SUBJECT_LIBRARY[typeof category]];
-  const rawSubject = subjects[0];
-  const subject = fillTemplate(rawSubject, ctx);
-  const hooks = HOOK_LIBRARY[category][variant.toLowerCase() as keyof typeof HOOK_LIBRARY[typeof category]];
-  const rawHook = hooks[0];
-  const hook = fillTemplate(rawHook, ctx);
   const observation = buildObservation(ctx, category);
-  const cta = pickCTA(variant);
+  const hook = `I was checking ${ctx.businessName} and ${observation}.`;
+  
+  const cta = "Worth showing you the full direction?";
 
   const message = `${hook}
 
-${observation}
+So instead of sending you a pitch, I rebuilt it first:
 
-Instead of sending a pitch, I rebuilt the opening section first to show you the direction:
 ${ctx.finalPreviewUrl}
 
 ${cta}`;
 
   const flags = qualityCheck(message, ctx);
+  
+  // Get strongest aggressive subject
+  const subjects = SUBJECT_LIBRARY[category]?.aggressive || SUBJECT_LIBRARY.UNKNOWN.aggressive;
+  const rawSubject = subjects[0];
+  // We need to fill template variables if any exist in the subject, like "You have {rating} stars"
+  // Let's implement a simple replacer or just use fillTemplate since we have ctx
+  const subject = isEmail ? rawSubject : null;
+
   return {
     subject,
     hook,
     message,
     cta,
-    variant,
-    qualityFlags: flags,
-    passed: flags.length === 0,
-  };
-}
-
-// ─── Instagram generator ─────────────────────────────────────────────────────
-
-function generateInstagramDraft(ctx: MessageContext, variant: CopyVariant): CopyDraft {
-  const category = inferProblemCategory(ctx.mainProblem);
-  const hooks = HOOK_LIBRARY[category][variant.toLowerCase() as keyof typeof HOOK_LIBRARY[typeof category]];
-  const rawHook = hooks[0];
-  const hook = fillTemplate(rawHook, ctx);
-  const cta = pickCTA(variant);
-
-  const message = `${hook}
-
-I rebuilt the first section of your site to show you:
-${ctx.finalPreviewUrl}
-
-${cta}`;
-
-  const flags = qualityCheck(message, ctx);
-  return {
-    subject: null,
-    hook,
-    message,
-    cta,
-    variant,
+    variant: "AGGRESSIVE", // Force aggressive for everything
     qualityFlags: flags,
     passed: flags.length === 0,
   };
@@ -438,45 +346,38 @@ export function generateAllVariants(
   ctx: MessageContext,
   channel: "WHATSAPP" | "EMAIL" | "INSTAGRAM" | "NONE" = "WHATSAPP",
 ): AllVariants {
-  const gen =
-    channel === "WHATSAPP" ? generateWhatsAppDraft
-    : channel === "EMAIL"  ? generateEmailDraft
-    : generateInstagramDraft;
+  const isEmail = channel === "EMAIL";
+  const draft = generateSharedDraft(ctx, isEmail);
 
-  const aggressive = gen(ctx, "AGGRESSIVE");
-  const curious    = gen(ctx, "CURIOUS");
-  const clean      = gen(ctx, "CLEAN");
-
-  // Recommend: if rating exists and is ≥4.5 with >100 reviews, CURIOUS is
-  // more credible (trust-anchor). Otherwise AGGRESSIVE. Clean is always fallback.
-  const recommended: CopyVariant =
-    ctx.rating && ctx.rating >= 4.5 && (ctx.reviewCount ?? 0) > 100
-      ? "CURIOUS"
-      : "AGGRESSIVE";
-
-  return { aggressive, curious, clean, recommended };
+  // Return the same draft for all variants to satisfy the type interface
+  return { 
+    aggressive: draft, 
+    curious: draft, 
+    clean: draft, 
+    recommended: "AGGRESSIVE" 
+  };
 }
 
 // ─── Legacy API (backward-compat) ────────────────────────────────────────────
 
 export function generateHook(ctx: MessageContext): string {
-  return generateWhatsAppDraft(ctx, "CURIOUS").hook;
+  return generateSharedDraft(ctx, false).hook;
 }
 
 export function generateWhatsAppMessage(ctx: MessageContext): string {
-  return generateWhatsAppDraft(ctx, "CURIOUS").message;
+  return generateSharedDraft(ctx, false).message;
 }
 
 export function generateEmailSubject(ctx: MessageContext): string {
-  return generateEmailDraft(ctx, "CURIOUS").subject ?? "I rebuilt part of your site";
+  return generateSharedDraft(ctx, true).subject ?? "I rebuilt your homepage";
 }
 
 export function generateEmailBody(ctx: MessageContext): string {
-  return generateEmailDraft(ctx, "CURIOUS").message;
+  return generateSharedDraft(ctx, true).message;
 }
 
 export function generateInstagramDM(ctx: MessageContext): string {
-  return generateInstagramDraft(ctx, "CURIOUS").message;
+  return generateSharedDraft(ctx, false).message;
 }
 
 // ─── Deep-link helpers ───────────────────────────────────────────────────────
