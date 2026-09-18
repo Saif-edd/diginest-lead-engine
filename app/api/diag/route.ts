@@ -5,9 +5,40 @@ export async function GET(request: Request) {
   if (auth !== `Bearer ${process.env.DIGINEST_ADMIN_TOKEN}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const endpoint = (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
+  const key = process.env.QUALITATIVE_AI_API_KEY;
+
+  async function testModel(model: string) {
+    const start = Date.now();
+    try {
+      const res = await fetch(`${endpoint}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: "Reply with the exact word: PING" }]
+        })
+      });
+      const data = await res.json();
+      return { model, status: res.status, duration: Date.now() - start, ok: res.ok, data };
+    } catch (e: any) {
+      return { model, error: e.message, duration: Date.now() - start };
+    }
+  }
+
+  const results = await Promise.all([
+    testModel("gemini-1.5-flash"),
+    testModel("gemini-2.0-flash"),
+    testModel("gemini-1.5-pro"),
+    testModel(process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini")
+  ]);
+
   return NextResponse.json({
-    QUALITATIVE_AI_BASE_URL: process.env.QUALITATIVE_AI_BASE_URL,
-    QUALITATIVE_AI_MODEL: process.env.QUALITATIVE_AI_MODEL,
-    QUALITATIVE_AI_API_KEY: process.env.QUALITATIVE_AI_API_KEY ? process.env.QUALITATIVE_AI_API_KEY.slice(0, 8) + "..." : undefined,
+    config: {
+      baseUrl: process.env.QUALITATIVE_AI_BASE_URL,
+      model: process.env.QUALITATIVE_AI_MODEL,
+    },
+    results
   });
 }
