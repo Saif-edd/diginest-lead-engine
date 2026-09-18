@@ -35,13 +35,13 @@ export async function GET(request: Request) {
   const results = await Promise.all(modelsToTest.map(testModel));
 
   const keyPrefix = process.env.QUALITATIVE_AI_API_KEY ? process.env.QUALITATIVE_AI_API_KEY.slice(0, 4) : "NONE";
-  const hasOpenAiKey = !!process.env.OPENAI_API_KEY;
+  const envKeys = Object.keys(process.env).filter(k => k.includes('AI') || k.includes('API') || k.includes('TOKEN') || k.includes('KEY'));
   return NextResponse.json({
     config: {
       baseUrl: process.env.QUALITATIVE_AI_BASE_URL,
       model: process.env.QUALITATIVE_AI_MODEL,
       keyPrefix,
-      hasOpenAiKey
+      envKeys
     },
     results
   });
