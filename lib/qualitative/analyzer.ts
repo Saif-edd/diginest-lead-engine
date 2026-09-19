@@ -1,7 +1,7 @@
 import { readAuditScreenshot } from "../storage/screenshots";
 import type { WebsiteAudit } from "../../types/audit";
 import type { Lead } from "../../types/lead";
-import { normalizeQualitativeResult } from "./schema";
+import { normalizeQualitativeResult, QualitativeValidationError } from "./schema";
 import { createQualitativeProvider, type QualitativeProvider } from "./provider";
 
 export interface QualitativeAnalysisContext {
@@ -120,6 +120,16 @@ export async function analyzeQualitative(
   input: QualitativeAnalysisInput,
   provider: QualitativeProvider = createQualitativeProvider(),
 ) {
-  const raw = await provider.analyze(input);
-  return normalizeQualitativeResult(raw, provider.modelVersion, new Date().toISOString());
+  let lastError: unknown;
+  const maxAttempts = 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const raw = await provider.analyze(input);
+      return normalizeQualitativeResult(raw, provider.modelVersion, new Date().toISOString());
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof QualitativeValidationError)) throw error;
+    }
+  }
+  throw lastError;
 }

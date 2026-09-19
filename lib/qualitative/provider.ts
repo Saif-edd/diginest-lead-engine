@@ -15,18 +15,10 @@ export class QualitativeProviderError extends Error {
   }
 }
 
-function providerEndpoint() {
-  return (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-}
-
-function providerKey() {
-  return process.env.QUALITATIVE_AI_API_KEY;
-}
-
 function systemPrompt() {
   return `You are Diginest's evidence-bound website opportunity analyst. Return ONLY valid JSON matching the requested schema.
 
-Use only the supplied verified lead context, objective audit fields, structured signal evidence, and the supplied homepage screenshot. Never invent services, prices, locations, reviews, staff, technologies, performance results, credentials, or business claims. Do not infer professional credentials from a business name, category, or suffix; do not upgrade a numeric rating into claims such as “5-star”, “glowing”, or “results” without matching supplied evidence. If evidence is unavailable, say so in the reason, use LOW confidence, and do not treat absence as a defect by itself.
+Use only the supplied verified lead context, objective audit fields, structured signal evidence, and the supplied homepage screenshot. Never invent services, prices, locations, reviews, staff, technologies, performance results, credentials, or business claims. Do not infer professional credentials from a business name, category, or suffix; do not upgrade a numeric rating into claims such as \u201c5-star\u201d, \u201cglowing\u201d, or \u201cresults\u201d without matching supplied evidence. If evidence is unavailable, say so in the reason, use LOW confidence, and do not treat absence as a defect by itself.
 
 The eight dimension scores are WEBSITE OPPORTUNITY points: 0 means no meaningful problem supported by evidence; the maximum means a serious opportunity. A positive deterministic signal proves presence only, not quality. Inspect presentation and hierarchy in the screenshot before calling a CTA, reviews, team, or services experience weak. Desktop evidence cannot prove mobile behavior; use the verified viewport field only as technical evidence.
 
@@ -71,24 +63,57 @@ JSON SHAPE:
 Do not include markdown fences or commentary.`;
 }
 
+interface ProviderConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+function resolveProviderChain(): ProviderConfig[] {
+  const chain: ProviderConfig[] = [];
+  if (process.env.QUALITATIVE_AI_API_KEY) {
+    chain.push({
+      baseUrl: (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      apiKey: process.env.QUALITATIVE_AI_API_KEY,
+      model: process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini",
+    });
+  }
+  if (process.env.QUALITATIVE_AI_FALLBACK_API_KEY) {
+    chain.push({
+      baseUrl: (process.env.QUALITATIVE_AI_FALLBACK_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      apiKey: process.env.QUALITATIVE_AI_FALLBACK_API_KEY,
+      model: process.env.QUALITATIVE_AI_FALLBACK_MODEL ?? "gpt-4o-mini",
+    });
+  }
+  if (!chain.length) {
+    throw new QualitativeProviderError("QUALITATIVE_AI_API_KEY is not configured", "NOT_CONFIGURED");
+  }
+  return chain;
+}
+
 export class OpenAICompatibleQualitativeProvider implements QualitativeProvider {
   readonly modelVersion: string;
+  private readonly baseUrl: string;
 
   constructor(
     private readonly apiKey: string,
-    // OVERRIDE: gemini-3.8-flash (503) and 3.7-flash (503) are down, falling back to 3.5-flash
-    modelVersion = process.env.QUALITATIVE_AI_MODEL?.replace("3.8-flash", "3.5-flash") ?? "gpt-4o-mini",
+    modelVersion = "gpt-4o-mini",
+    baseUrl = "https://api.openai.com/v1",
   ) {
     this.modelVersion = modelVersion;
+    this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
   async analyze(input: QualitativeAnalysisInput) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 45000));
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 20000));
     try {
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
       ];
+      if (input.screenshotDataUrl) {
+        userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl } });
+      }
       const request = {
         method: "POST",
         headers: {
@@ -108,19 +133,20 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
       };
       let response: Response | undefined;
       let payload: Record<string, unknown> = {};
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        response = await fetch(`${providerEndpoint()}/chat/completions`, request);
+      const maxAttempts = 4;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        response = await fetch(`${this.baseUrl}/chat/completions`, request);
         const rawBody = await response.text();
         try { payload = JSON.parse(rawBody) as Record<string, unknown>; } catch { payload = {}; }
         if (response.ok) break;
-        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === 9) {
+        if (![429, 500, 502, 503, 504].includes(response.status) || attempt === maxAttempts - 1) {
           const error = typeof payload.error === "object" && payload.error ? payload.error as Record<string, unknown> : undefined;
           const detail = typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : rawBody.trim() || undefined;
           const retryAfter = response.headers.get("retry-after");
           const suffix = retryAfter ? ` (retry-after: ${retryAfter})` : "";
           throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}${suffix}`.slice(0, 500), "PROVIDER_ERROR");
         }
-        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
+        await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
       }
       if (!response?.ok) throw new QualitativeProviderError("Qualitative provider request failed", "PROVIDER_ERROR");
       const choices = Array.isArray(payload.choices) ? payload.choices : [];
@@ -138,7 +164,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
         throw new QualitativeProviderError("Qualitative provider returned invalid JSON", "PROVIDER_ERROR");
       }
     } catch (error) {
-      const safeUrl = providerEndpoint().replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
+      const safeUrl = this.baseUrl.replace(/^(https?:\/\/)([^/]+).*/, "$1***$2***");
       const meta = ` (${safeUrl} - ${this.modelVersion})`;
       if (error instanceof QualitativeProviderError) {
         if (!error.message.includes(safeUrl)) {
@@ -155,7 +181,23 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 }
 
 export function createQualitativeProvider(): QualitativeProvider {
-  const apiKey = providerKey();
-  if (!apiKey) throw new QualitativeProviderError("QUALITATIVE_AI_API_KEY is not configured", "NOT_CONFIGURED");
-  return new OpenAICompatibleQualitativeProvider(apiKey);
+  const chain = resolveProviderChain().map(
+    (config) => new OpenAICompatibleQualitativeProvider(config.apiKey, config.model, config.baseUrl),
+  );
+  return {
+    modelVersion: chain[0].modelVersion,
+    async analyze(input: QualitativeAnalysisInput) {
+      let lastError: unknown;
+      for (const provider of chain) {
+        try {
+          return await provider.analyze(input);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError instanceof Error
+        ? lastError
+        : new QualitativeProviderError("All qualitative providers failed", "PROVIDER_ERROR");
+    },
+  };
 }
