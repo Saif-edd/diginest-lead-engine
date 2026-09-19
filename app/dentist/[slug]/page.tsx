@@ -2,6 +2,7 @@ import { findPreviewBySlug } from "@/lib/persistence/db";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import DentalPreviewPage from "@/components/preview/DentalPreviewPage";
+import { isPreviewPubliclyReady } from "@/lib/preview/workflow";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -12,7 +13,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const fullSlug = `/dentist/${slug}`;
   const record = await findPreviewBySlug(fullSlug).catch(() => null);
 
-  if (!record || record.status !== "READY") {
+  if (!record || !isPreviewPubliclyReady(record) || !record.configJson?.business) {
     return { title: "Preview | Diginest" };
   }
 
@@ -35,7 +36,7 @@ export default async function DentistPreviewRoute({ params }: Props) {
     notFound();
   }
 
-  if (!record || record.status !== "READY") {
+  if (!record || !isPreviewPubliclyReady(record) || !record.configJson?.business) {
     notFound();
   }
 

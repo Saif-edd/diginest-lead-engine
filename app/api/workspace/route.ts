@@ -6,7 +6,8 @@ import type { Lead } from "@/types/lead";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!isAuthorized(request)) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   try { return NextResponse.json(await loadProductionWorkspace()); }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Workspace unavailable" }, { status: 503 }); }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { hasValidContactChannel, isValidEmail, isValidPhone } from "../lib/contact/validation";
-import { isAuthorized } from "../lib/security/auth";
+import { isAuthorized, sessionCookie } from "../lib/security/auth";
 import { dashboardMetrics, qualifiedLeads } from "../lib/dashboard/metrics";
 import { normalizeRows } from "../lib/normalization";
 
@@ -19,6 +19,12 @@ describe("production audit endpoint protection", () => {
     process.env.DIGINEST_ADMIN_TOKEN = "test-token";
     expect(isAuthorized(new Request("http://localhost/api/audit"))).toBe(false);
     expect(isAuthorized(new Request("http://localhost/api/audit", { headers: { authorization: "Bearer test-token" } }))).toBe(true);
+  });
+
+  it("accepts the encoded session cookie issued by the auth route", () => {
+    process.env.DIGINEST_ADMIN_TOKEN = "token/with+reserved=characters";
+    const cookie = sessionCookie(process.env.DIGINEST_ADMIN_TOKEN, false).split(";", 1)[0];
+    expect(isAuthorized(new Request("http://localhost/api/workspace", { headers: { cookie } }))).toBe(true);
   });
 
 });

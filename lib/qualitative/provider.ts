@@ -15,6 +15,12 @@ export class QualitativeProviderError extends Error {
   }
 }
 
+function providerTimeoutMs() {
+  const configured = Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 60_000);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.min(configured, 120_000)
+    : 60_000;
+}
 function systemPrompt() {
   return `You are Diginest's evidence-bound website opportunity analyst. Return ONLY valid JSON matching the requested schema.
 
@@ -97,7 +103,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    modelVersion = "gpt-4o-mini",
+    modelVersion = process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini",
     baseUrl = "https://api.openai.com/v1",
   ) {
     this.modelVersion = modelVersion;
@@ -106,7 +112,9 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   async analyze(input: QualitativeAnalysisInput) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 20000));
+    const timeoutMs = providerTimeoutMs();
+    const deadline = Date.now() + timeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const userContent: Array<Record<string, unknown>> = [
         { type: "text", text: userPrompt(input) },
@@ -146,7 +154,15 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
           const suffix = retryAfter ? ` (retry-after: ${retryAfter})` : "";
           throw new QualitativeProviderError(`Qualitative provider returned HTTP ${response.status}: ${String(error?.message ?? detail ?? "unknown error")}${suffix}`.slice(0, 500), "PROVIDER_ERROR");
         }
-        await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : 500 * 2 ** attempt;
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new QualitativeProviderError("Qualitative provider timed out", "TIMEOUT");
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(backoffMs, remainingMs)));
       }
       if (!response?.ok) throw new QualitativeProviderError("Qualitative provider request failed", "PROVIDER_ERROR");
       const choices = Array.isArray(payload.choices) ? payload.choices : [];

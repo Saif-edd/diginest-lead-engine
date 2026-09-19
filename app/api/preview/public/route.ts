@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { findPreviewBySlug } from "@/lib/persistence/db";
+import { isPreviewPubliclyReady } from "@/lib/preview/workflow";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   try {
     const record = await findPreviewBySlug(slug);
 
-    if (!record || record.status !== "READY") {
+    if (!record || !isPreviewPubliclyReady(record) || !record.configJson?.business) {
       return NextResponse.json({ error: "Preview not found" }, { status: 404 });
     }
 

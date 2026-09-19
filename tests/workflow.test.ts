@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveWorkflowStatus, validateMarkReadyForOutreach } from "../lib/preview/workflow";
+import { deriveWorkflowStatus, isPreviewPubliclyReady, validateMarkReadyForOutreach } from "../lib/preview/workflow";
 
 describe("Workflow Status Derivation", () => {
   it("legacy READY + no URL does not become URL_ADDED", () => {
@@ -20,6 +20,12 @@ describe("Workflow Status Derivation", () => {
   it("legacy READY + has finalUrl maps to READY_FOR_OUTREACH", () => {
     const ws = deriveWorkflowStatus(null, "READY", "https://deployed.vercel.app", false);
     expect(ws).toBe("READY_FOR_OUTREACH");
+  });
+
+  it("treats an explicitly approved V0 preview as publicly ready", () => {
+    expect(isPreviewPubliclyReady({ status: "READY_FOR_OUTREACH", workflowStatus: "READY_FOR_OUTREACH" })).toBe(true);
+    expect(isPreviewPubliclyReady({ status: "PREVIEW_LINK_ADDED", workflowStatus: "PREVIEW_LINK_ADDED" })).toBe(false);
+    expect(isPreviewPubliclyReady({ status: "READY", workflowStatus: "NOT_STARTED" })).toBe(true);
   });
 });
   it("READY_FOR_OUTREACH requires finalPreviewUrl", () => {

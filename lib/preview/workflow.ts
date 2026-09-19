@@ -1,4 +1,17 @@
-import type { V0WorkflowStatus } from "@/types/preview";
+import type { PreviewRecord, V0WorkflowStatus } from "@/types/preview";
+
+/**
+ * A preview can be public either through the legacy workflow or through the
+ * explicit V0 approval workflow. Keeping this rule in one place prevents the
+ * public route from rejecting correctly approved V0 records.
+ */
+export function isPreviewPubliclyReady(
+  record: Pick<PreviewRecord, "status" | "workflowStatus">,
+) {
+  return record.status === "READY" ||
+    record.status === "READY_FOR_OUTREACH" ||
+    record.workflowStatus === "READY_FOR_OUTREACH";
+}
 
 export function deriveWorkflowStatus(
   workflowStatus: string | null | undefined,
@@ -17,7 +30,7 @@ export function deriveWorkflowStatus(
     }
   }
   return ws as V0WorkflowStatus;
-}import type { PreviewRecord } from "@/types/preview";
+}
 
 export function validateMarkReadyForOutreach(record: PreviewRecord | null): { ok: boolean; error?: string } {
   if (!record || !record.finalPreviewUrl) {

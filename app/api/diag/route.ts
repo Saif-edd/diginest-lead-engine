@@ -1,60 +1,79 @@
 import { NextResponse } from "next/server";
+import { isAuthorized } from "@/lib/security/auth";
+
+export const runtime = "nodejs";
+
+type ProviderCheck = {
+  configured: boolean;
+  status?: number;
+  ok?: boolean;
+  durationMs: number;
+  error?: string;
+};
+
+function providerEndpoint() {
+  return (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
+}
+
+function providerModel() {
+  return process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini";
+}
+
+async function checkConfiguredProvider(): Promise<ProviderCheck> {
+  const startedAt = Date.now();
+  const apiKey = process.env.QUALITATIVE_AI_API_KEY;
+  if (!apiKey) {
+    return { configured: false, durationMs: 0, error: "QUALITATIVE_AI_API_KEY is not configured" };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(`${providerEndpoint()}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: providerModel(),
+        messages: [{ role: "user", content: "Reply with the exact word: PING" }],
+        max_tokens: 5,
+      }),
+      signal: controller.signal,
+    });
+    return {
+      configured: true,
+      status: response.status,
+      ok: response.ok,
+      durationMs: Date.now() - startedAt,
+      ...(!response.ok ? { error: `Provider returned HTTP ${response.status}` } : {}),
+    };
+  } catch (error) {
+    return {
+      configured: true,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error && error.name === "AbortError"
+        ? "Provider diagnostic timed out"
+        : "Provider diagnostic request failed",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function GET(request: Request) {
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.DIGINEST_ADMIN_TOKEN}`) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const endpoint = (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const key = process.env.QUALITATIVE_AI_API_KEY;
-
-  async function testModel(model: string) {
-    const start = Date.now();
-    try {
-      const res = await fetch(`${endpoint}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: "Reply with the exact word: PING" }]
-        })
-      });
-      const data = await res.json();
-      return { model, status: res.status, duration: Date.now() - start, ok: res.ok, data };
-    } catch (e: any) {
-      return { model, error: e.message, duration: Date.now() - start };
-    }
-  }
-
-  const modelsToTest = [
-    "gemini-1.5-flash-8b",
-    "gemini-2.0-flash-exp",
-    "gemini-1.5-flash-002",
-  ];
-  const results = await Promise.all(modelsToTest.map(testModel));
-
-
-  const getModels = async () => {
-    try {
-      const url = (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-      const r = await fetch(url + "/models", { headers: { authorization: `Bearer ${key}` } });
-      const data = await r.json();
-      return data;
-    } catch (e) {
-      return { error: String(e) };
-    }
-  };
-
-  const availableModels = await getModels();
-
-  const envKeys = Object.keys(process.env).filter(k => k.includes('AI') || k.includes('API') || k.includes('TOKEN') || k.includes('KEY'));
+  const result = await checkConfiguredProvider();
   return NextResponse.json({
     config: {
-      baseUrl: process.env.QUALITATIVE_AI_BASE_URL,
-      keyPrefix: key ? key.slice(0, 4) : "NONE",
-      envKeys
+      baseUrl: providerEndpoint(),
+      model: providerModel(),
+      keyConfigured: Boolean(process.env.QUALITATIVE_AI_API_KEY),
     },
-    availableModels
+    provider: result,
   });
 }

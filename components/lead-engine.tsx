@@ -3651,7 +3651,6 @@ function PreviewStudioView({
       })
       .catch(() => { /* silent – rowStates stay empty, user can still trigger actions */ })
       .finally(() => setHydrated(true));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const eligibleLeads = useMemo(() => {
@@ -4133,19 +4132,56 @@ export function LeadEngine() {
   const [qualitativeRunningIds, setQualitativeRunningIds] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetch("/api/workspace")
-      .then(async (response) => {
-        if (!response.ok) return;
-        const parsed = (await response.json()) as { leads?: Lead[]; mode?: WorkspaceMode; lastImportReport?: ImportReport | null };
-        if (Array.isArray(parsed.leads) && parsed.leads.length > 0) setLeads(parsed.leads);
+    let cancelled = false;
+    async function hydrateWorkspace() {
+      try {
+        const authResponse = await fetch("/api/auth");
+        const auth = await authResponse.json() as { authenticated?: boolean };
+        if (!authResponse.ok || !auth.authenticated) {
+          if (!cancelled) setAuthRequired(true);
+          return;
+        }
+
+        const response = await fetch("/api/workspace");
+        const parsed = await response.json() as { error?: string; leads?: Lead[]; mode?: WorkspaceMode; lastImportReport?: ImportReport | null };
+        if (!response.ok) throw new Error(parsed.error ?? "Workspace unavailable");
+        if (Array.isArray(parsed.leads)) setLeads(parsed.leads);
         if (parsed.mode) setMode(parsed.mode);
         if (parsed.lastImportReport !== undefined) setLastImportReport(parsed.lastImportReport ?? null);
-      })
-      .catch(() => undefined)
-      .finally(() => setStorageHydrated(true));
+        if (!cancelled) {
+          setAuthRequired(false);
+          setWorkspaceError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWorkspaceError(error instanceof Error ? error.message : "Workspace unavailable");
+        }
+      } finally {
+        if (!cancelled) setStorageHydrated(true);
+      }
+    }
+    void hydrateWorkspace();
+    return () => { cancelled = true; };
   }, []);
+
+  async function signIn() {
+    const token = window.prompt("Enter the Diginest admin token to load the production workspace.");
+    if (!token) return;
+    const response = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) {
+      setAuthRequired(true);
+      setWorkspaceError("Invalid admin token");
+      return;
+    }
+    window.location.reload();
+  }
 
   async function ensureAdminSession() {
     const session = await fetch("/api/auth");
@@ -4550,6 +4586,23 @@ export function LeadEngine() {
           </div>
         </header>
         <main className="mx-auto max-w-[1480px] p-4 sm:p-6 lg:p-8">
+          {(authRequired || workspaceError) && (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <span>
+                {authRequired
+                  ? "Sign in to load the production workspace."
+                  : `Workspace unavailable: ${workspaceError}`}
+              </span>
+              {authRequired && (
+                <button
+                  onClick={() => void signIn()}
+                  className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-800"
+                >
+                  Sign in
+                </button>
+              )}
+            </div>
+          )}
           {activeView === "Overview" && (
             <OverviewView
               leads={leads}

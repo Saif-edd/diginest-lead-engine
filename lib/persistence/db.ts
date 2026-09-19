@@ -424,10 +424,13 @@ export async function setFinalPreviewUrl(
   }
   await ensureSchema();
   const timestamp = now();
-  await database().execute({
+  const result = await database().execute({
     sql: "UPDATE preview_records SET final_preview_url = ?, preview_provider = ?, preview_added_at = ?, workflow_status = 'PREVIEW_LINK_ADDED', status = 'PREVIEW_LINK_ADDED', updated_at = ? WHERE id = ?",
     args: [url, provider, timestamp, timestamp, id],
   });
+  if (result.rowsAffected === 0) {
+    return { ok: false, error: "Preview record not found" };
+  }
   return { ok: true };
 }
 
@@ -461,7 +464,7 @@ export async function findPreviewBySlug(slug: string): Promise<PreviewRecord | n
 
 export async function listReadyPreviews(): Promise<PreviewRecord[]> {
   await ensureSchema();
-  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE status = 'READY' ORDER BY ready_at DESC", args: [] });
+  const result = await database().execute({ sql: "SELECT * FROM preview_records WHERE status IN ('READY', 'READY_FOR_OUTREACH') OR workflow_status = 'READY_FOR_OUTREACH' ORDER BY ready_at DESC", args: [] });
   return result.rows.map((r) => rowToPreviewRecord(r as Record<string, unknown>));
 }
 
@@ -559,4 +562,3 @@ export async function listOutreachRecords(): Promise<OutreachRecord[]> {
   const result = await database().execute({ sql: "SELECT * FROM outreach_records ORDER BY created_at DESC", args: [] });
   return result.rows.map((r) => rowToOutreachRecord(r as Record<string, unknown>));
 }
-

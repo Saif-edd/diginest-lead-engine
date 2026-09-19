@@ -14,37 +14,42 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
   const [records, setRecords] = useState<Record<LeadId, OutreachRecord>>({});
   const [previews, setPreviews] = useState<Record<LeadId, PreviewRecord>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [copiedIg, setCopiedIg] = useState<Record<LeadId, boolean>>({});
 
-  const fetchData = async () => {
-    try {
-      const [outreachRes, previewRes] = await Promise.all([
-        fetch("/api/outreach"),
-        fetch("/api/preview")
-      ]);
-      const outreachData = await outreachRes.json();
-      const previewData = await previewRes.json();
-      
-      if (outreachData.records) {
-        const map: Record<LeadId, OutreachRecord> = {};
-        (outreachData.records as OutreachRecord[]).forEach((r) => (map[r.leadId] = r));
-        setRecords(map);
-      }
-      
-      if (previewData.records) {
-        const pMap: Record<LeadId, PreviewRecord> = {};
-        (previewData.records as PreviewRecord[]).forEach((r) => (pMap[r.leadId] = r));
-        setPreviews(pMap);
-      }
-    } catch (err) {
-      console.error("Failed to load outreach studio data", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    async function loadData() {
+      try {
+        const [outreachRes, previewRes] = await Promise.all([
+          fetch("/api/outreach"),
+          fetch("/api/preview"),
+        ]);
+        const outreachData = await outreachRes.json() as { records?: OutreachRecord[]; error?: string };
+        const previewData = await previewRes.json() as { records?: PreviewRecord[]; error?: string };
+        if (!outreachRes.ok || !previewRes.ok) {
+          throw new Error(outreachData.error ?? previewData.error ?? "Failed to load outreach studio data");
+        }
+        if (cancelled) return;
+
+        const recordMap: Record<LeadId, OutreachRecord> = {};
+        (outreachData.records ?? []).forEach((record) => (recordMap[record.leadId] = record));
+        setRecords(recordMap);
+
+        const previewMap: Record<LeadId, PreviewRecord> = {};
+        (previewData.records ?? []).forEach((record) => (previewMap[record.leadId] = record));
+        setPreviews(previewMap);
+        setError(null);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load outreach studio data");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadData();
+    return () => { cancelled = true; };
   }, []);
 
   const eligibleLeads = leads.filter((l) => {
@@ -77,6 +82,10 @@ export function OutreachStudioView({ leads }: { leads: Lead[] }) {
 
       {loading ? (
         <div className="text-sm text-gray-500">Loading outreach queue...</div>
+      ) : error ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          {error}
+        </div>
       ) : (
         <div className="space-y-4">
           {eligibleLeads.map((lead) => {

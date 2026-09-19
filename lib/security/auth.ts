@@ -17,7 +17,15 @@ export function isAuthorized(request: Request) {
   const configured = configuredToken();
   if (!configured) return false;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const cookie = request.headers.get("cookie")?.match(new RegExp(`${cookieName}=([^;]+)`))?.[1];
+  const encodedCookie = request.headers.get("cookie")?.match(new RegExp(`${cookieName}=([^;]+)`))?.[1];
+  let cookie: string | undefined;
+  if (encodedCookie) {
+    try {
+      cookie = decodeURIComponent(encodedCookie);
+    } catch {
+      return false;
+    }
+  }
   return Boolean((bearer && safeEqual(bearer, configured)) || (cookie && safeEqual(cookie, configured)));
 }
 
