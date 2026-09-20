@@ -161,11 +161,13 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
             },
             screenshotDataUrl: undefined,
           };
-      const userContent: Array<Record<string, unknown>> = [
-        { type: "text", text: userPrompt(effectiveInput) },
-      ];
+      const prompt = userPrompt(effectiveInput);
+      let userContent: string | Array<Record<string, unknown>> = prompt;
+      if (includeScreenshot) {
+        userContent = [{ type: "text", text: prompt }];
+      }
       if (includeScreenshot && effectiveInput.screenshotDataUrl) {
-        userContent.push({ type: "image_url", image_url: { url: effectiveInput.screenshotDataUrl } });
+        (userContent as Array<Record<string, unknown>>).push({ type: "image_url", image_url: { url: effectiveInput.screenshotDataUrl } });
       }
       const request = {
         method: "POST",
