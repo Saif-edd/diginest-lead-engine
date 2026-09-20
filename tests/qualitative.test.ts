@@ -5,6 +5,7 @@ import { analyzeQualitative } from "../lib/qualitative/analyzer";
 import { qualitativeIdempotencyKey } from "../lib/qualitative/idempotency";
 import { qualitativeStatusFor, transitionQualitativeStatus } from "../lib/qualitative/state";
 import { QualitativeValidationError, normalizeQualitativeResult } from "../lib/qualitative/schema";
+import { OpenAICompatibleQualitativeProvider } from "../lib/qualitative/provider";
 import { normalizeRows } from "../lib/normalization";
 
 function rawResult(overrides: Record<string, unknown> = {}) {
@@ -83,6 +84,11 @@ describe("qualitative schema and scoring", () => {
 });
 
 describe("qualitative provider failure and idempotency", () => {
+  it("uses a vision-capable default for Groq when no model is configured", () => {
+    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.groq.com/openai/v1").modelVersion).toBe("qwen/qwen3.6-27b");
+    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.openai.com/v1").modelVersion).toBe("gpt-4o-mini");
+  });
+
   it("surfaces invalid provider output without making a result", async () => {
     const lead = normalizeRows([{ name: "Clinic", address: "Dubai", website: "https://clinic.example", category: "Dentist" }]).leads[0];
     await expect(analyzeQualitative({ context: { business: { name: lead.name, category: lead.category, address: lead.address }, objectiveAudit: { objectiveAuditStatus: "COMPLETE", h1: [], schemaTypes: [], deterministicSignals: {}, signalEvidence: {}, screenshotAvailable: false } } }, { modelVersion: "test-model", analyze: async () => ({}) })).rejects.toThrow(QualitativeValidationError);

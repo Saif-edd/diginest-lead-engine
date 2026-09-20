@@ -1345,6 +1345,7 @@ function WebsiteAuditView({
   onAnalyzeNext,
   auditingIds,
   analyzingIds,
+  auditRequestErrors,
 }: {
   leads: Lead[];
   onOpenLead: (lead: Lead) => void;
@@ -1354,6 +1355,7 @@ function WebsiteAuditView({
   onAnalyzeNext: (count: number) => Promise<void>;
   auditingIds: string[];
   analyzingIds: string[];
+  auditRequestErrors: Record<string, string>;
 }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
@@ -1642,6 +1644,14 @@ function WebsiteAuditView({
                         {audit.failureReason && (
                           <span className="text-[9px] font-semibold text-rose-600">
                             {audit.failureReason}
+                          </span>
+                        )}
+                        {auditRequestErrors[lead.leadId] && (
+                          <span
+                            className="max-w-[160px] truncate text-[9px] font-semibold text-amber-700"
+                            title={auditRequestErrors[lead.leadId]}
+                          >
+                            Request: {auditRequestErrors[lead.leadId]}
                           </span>
                         )}
                       </div>
@@ -4129,6 +4139,7 @@ export function LeadEngine() {
   const [showImport, setShowImport] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [auditRunningIds, setAuditRunningIds] = useState<string[]>([]);
+  const [auditRequestErrors, setAuditRequestErrors] = useState<Record<string, string>>({});
   const [qualitativeRunningIds, setQualitativeRunningIds] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -4286,6 +4297,14 @@ export function LeadEngine() {
     if (!lead?.hasWebsite || !lead.website) return;
     if (!(await ensureAdminSession())) return;
     const retryCount = (lead.audit.retryCount ?? 0) + 1;
+    setAuditRequestErrors((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    let response: Response | undefined;
+    let payload: { audit?: WebsiteAudit; error?: string } = {};
     try {
       const queued = transitionAuditStatus(lead.audit, "QUEUED");
       const auditing = transitionAuditStatus(
@@ -4294,7 +4313,7 @@ export function LeadEngine() {
       );
       applyAuditToLead(id, auditing);
       setAuditRunningIds((current) => [...new Set([...current, id])]);
-      const response = await fetch("/api/audit", {
+      response = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4303,14 +4322,25 @@ export function LeadEngine() {
           retryCount,
         }),
       });
-      const payload = (await response.json()) as {
-        audit?: WebsiteAudit;
-        error?: string;
-      };
-      if (!response.ok || !payload.audit)
-        throw new Error(payload.error ?? "Audit request failed");
-      applyAuditToLead(id, payload.audit);
+      payload = (await response.json()) as { audit?: WebsiteAudit; error?: string };
+      if (payload.audit) {
+        // Server-produced failures (DNS, HTTP, SSL, timeout) are real audit
+        // outcomes and must not be overwritten by the generic client catch.
+        applyAuditToLead(id, payload.audit);
+        if (!response.ok) return;
+      }
+      if (!response.ok || !payload.audit) throw new Error(payload.error ?? "Audit request failed");
     } catch (error) {
+      if (response && !payload.audit) {
+        // A request-level failure (especially 429) did not audit the website.
+        // Keep the lead retryable instead of inventing BROWSER_ERROR.
+        applyAuditToLead(id, lead.audit);
+        setAuditRequestErrors((current) => ({
+          ...current,
+          [id]: error instanceof Error ? error.message : "Audit request failed",
+        }));
+        return;
+      }
       applyAuditToLead(id, {
         ...lead.audit,
         status: "FAILED",
@@ -4629,6 +4659,7 @@ export function LeadEngine() {
               onAnalyzeNext={analyzeNext}
               auditingIds={auditRunningIds}
               analyzingIds={qualitativeRunningIds}
+              auditRequestErrors={auditRequestErrors}
             />
           )}
           {activeView === "Qualified" && (

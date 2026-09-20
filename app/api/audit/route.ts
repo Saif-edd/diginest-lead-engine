@@ -11,7 +11,14 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (!checkRateLimit(request)) return NextResponse.json({ error: "Audit rate limit exceeded" }, { status: 429 });
+  // The dashboard supports batches up to 50. Keep a bounded abuse guard, but
+  // do not reject the second half of a normal audit batch after 10 requests.
+  if (!checkRateLimit(request, 60)) {
+    return NextResponse.json(
+      { error: "Audit rate limit exceeded" },
+      { status: 429, headers: { "Retry-After": "300" } },
+    );
+  }
   try {
     const body = (await request.json()) as {
       leadId?: string;

@@ -21,6 +21,16 @@ function providerTimeoutMs() {
     ? Math.min(configured, 120_000)
     : 60_000;
 }
+
+function defaultModelFor(baseUrl: string) {
+  return /api\.groq\.com/i.test(baseUrl)
+    ? "qwen/qwen3.6-27b"
+    : "gpt-4o-mini";
+}
+
+function normalizeBaseUrl(value: string | undefined) {
+  return (value ?? "https://api.openai.com/v1").replace(/\/$/, "");
+}
 function systemPrompt() {
   return `You are Diginest's evidence-bound website opportunity analyst. Return ONLY valid JSON matching the requested schema.
 
@@ -78,17 +88,19 @@ interface ProviderConfig {
 function resolveProviderChain(): ProviderConfig[] {
   const chain: ProviderConfig[] = [];
   if (process.env.QUALITATIVE_AI_API_KEY) {
+    const baseUrl = normalizeBaseUrl(process.env.QUALITATIVE_AI_BASE_URL);
     chain.push({
-      baseUrl: (process.env.QUALITATIVE_AI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      baseUrl,
       apiKey: process.env.QUALITATIVE_AI_API_KEY,
-      model: process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini",
+      model: process.env.QUALITATIVE_AI_MODEL ?? defaultModelFor(baseUrl),
     });
   }
   if (process.env.QUALITATIVE_AI_FALLBACK_API_KEY) {
+    const baseUrl = normalizeBaseUrl(process.env.QUALITATIVE_AI_FALLBACK_BASE_URL);
     chain.push({
-      baseUrl: (process.env.QUALITATIVE_AI_FALLBACK_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+      baseUrl,
       apiKey: process.env.QUALITATIVE_AI_FALLBACK_API_KEY,
-      model: process.env.QUALITATIVE_AI_FALLBACK_MODEL ?? "gpt-4o-mini",
+      model: process.env.QUALITATIVE_AI_FALLBACK_MODEL ?? defaultModelFor(baseUrl),
     });
   }
   if (!chain.length) {
@@ -103,11 +115,11 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
 
   constructor(
     private readonly apiKey: string,
-    modelVersion = process.env.QUALITATIVE_AI_MODEL ?? "gpt-4o-mini",
+    modelVersion: string | undefined = undefined,
     baseUrl = "https://api.openai.com/v1",
   ) {
-    this.modelVersion = modelVersion;
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.modelVersion = modelVersion ?? defaultModelFor(this.baseUrl);
   }
 
   async analyze(input: QualitativeAnalysisInput) {
