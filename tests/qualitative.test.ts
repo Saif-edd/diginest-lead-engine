@@ -84,9 +84,47 @@ describe("qualitative schema and scoring", () => {
 });
 
 describe("qualitative provider failure and idempotency", () => {
-  it("uses a vision-capable default for Groq when no model is configured", () => {
-    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.groq.com/openai/v1").modelVersion).toBe("qwen/qwen3.6-27b");
+  it("uses a production Groq model by default when no model is configured", () => {
+    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.groq.com/openai/v1").modelVersion).toBe("openai/gpt-oss-120b");
     expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.openai.com/v1").modelVersion).toBe("gpt-4o-mini");
+  });
+
+  it("omits screenshots for Groq text-only models and marks visual evidence unavailable", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      await new OpenAICompatibleQualitativeProvider("test-key", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1").analyze({
+        context: {
+          business: { name: "Synthetic clinic", category: "Dentist", address: "Synthetic address" },
+          objectiveAudit: {
+            objectiveAuditStatus: "COMPLETE",
+            h1: [],
+            schemaTypes: [],
+            deterministicSignals: {},
+            signalEvidence: {},
+            screenshotAvailable: true,
+          },
+        },
+        screenshotDataUrl: "data:image/png;base64,c3ludGhldGlj",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const messages = requestBody?.messages as Array<{ content: unknown }>;
+    expect(messages[1].content).toHaveLength(1);
+    const text = String((messages[1].content as Array<{ text: string }>)[0].text);
+    expect(text).toContain('"screenshotAvailable": false');
+    expect(text).toContain("The configured provider model does not support image input.");
+    expect(text).not.toContain("c3ludGhldGlj");
   });
 
   it("surfaces invalid provider output without making a result", async () => {

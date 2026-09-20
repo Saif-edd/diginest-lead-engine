@@ -24,13 +24,19 @@ function providerTimeoutMs() {
 
 function defaultModelFor(baseUrl: string) {
   return /api\.groq\.com/i.test(baseUrl)
-    ? "qwen/qwen3.6-27b"
+    ? "openai/gpt-oss-120b"
     : "gpt-4o-mini";
 }
 
 function normalizeBaseUrl(value: string | undefined) {
   return (value ?? "https://api.openai.com/v1").replace(/\/$/, "");
 }
+
+function supportsVision(model: string, baseUrl: string) {
+  if (!/api\.groq\.com/i.test(baseUrl)) return true;
+  return /qwen\/qwen3\.(6|8)-27b|meta-llama\/llama-4-(scout|maverick)/i.test(model);
+}
+
 function systemPrompt() {
   return `You are Diginest's evidence-bound website opportunity analyst. Return ONLY valid JSON matching the requested schema.
 
@@ -128,11 +134,26 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
     const deadline = Date.now() + timeoutMs;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const includeScreenshot = Boolean(input.screenshotDataUrl) && supportsVision(this.modelVersion, this.baseUrl);
+      const effectiveInput = includeScreenshot || !input.screenshotDataUrl
+        ? input
+        : {
+            ...input,
+            context: {
+              ...input.context,
+              objectiveAudit: {
+                ...input.context.objectiveAudit,
+                screenshotAvailable: false,
+                screenshotError: "The configured provider model does not support image input.",
+              },
+            },
+            screenshotDataUrl: undefined,
+          };
       const userContent: Array<Record<string, unknown>> = [
-        { type: "text", text: userPrompt(input) },
+        { type: "text", text: userPrompt(effectiveInput) },
       ];
-      if (input.screenshotDataUrl) {
-        userContent.push({ type: "image_url", image_url: { url: input.screenshotDataUrl } });
+      if (includeScreenshot && effectiveInput.screenshotDataUrl) {
+        userContent.push({ type: "image_url", image_url: { url: effectiveInput.screenshotDataUrl } });
       }
       const request = {
         method: "POST",
