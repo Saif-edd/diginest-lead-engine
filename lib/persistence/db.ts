@@ -182,9 +182,12 @@ export async function appendProductionWorkspace(leads: Lead[], report: ImportRep
 export async function clearProductionWorkspace() {
   await ensureSchema();
   await database().batch([
-    { sql: "DELETE FROM audit_results", args: [] },
-    { sql: "DELETE FROM qualitative_results", args: [] },
-    { sql: "DELETE FROM audit_jobs", args: [] },
+    { sql: "DELETE FROM outreach_records WHERE lead_id IN (SELECT lead_id FROM leads WHERE workspace_mode = 'PRODUCTION')", args: [] },
+    { sql: "DELETE FROM preview_records WHERE lead_id IN (SELECT lead_id FROM leads WHERE workspace_mode = 'PRODUCTION')", args: [] },
+    { sql: "DELETE FROM audit_results WHERE lead_id IN (SELECT lead_id FROM leads WHERE workspace_mode = 'PRODUCTION')", args: [] },
+    { sql: "DELETE FROM qualitative_results WHERE lead_id IN (SELECT lead_id FROM leads WHERE workspace_mode = 'PRODUCTION')", args: [] },
+    { sql: "DELETE FROM audit_jobs WHERE lead_id IN (SELECT lead_id FROM leads WHERE workspace_mode = 'PRODUCTION')", args: [] },
+    { sql: "DELETE FROM imports WHERE workspace_mode = 'PRODUCTION'", args: [] },
     { sql: "DELETE FROM leads WHERE workspace_mode = 'PRODUCTION'", args: [] },
   ], "write");
   return loadProductionWorkspace();

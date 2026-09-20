@@ -4439,7 +4439,7 @@ export function LeadEngine() {
   }
 
   async function analyzeSelected(ids: string[]) {
-    const limit = 4;
+    const limit = 20;
     const executing = new Set<Promise<void>>();
     for (const id of ids) {
       const p = analyzeLead(id).finally(() => executing.delete(p));
