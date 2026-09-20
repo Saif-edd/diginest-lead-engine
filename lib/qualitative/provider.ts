@@ -16,15 +16,15 @@ export class QualitativeProviderError extends Error {
 }
 
 function providerTimeoutMs() {
-  const configured = Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 60_000);
+  const configured = Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 90_000);
   return Number.isFinite(configured) && configured > 0
     ? Math.min(configured, 120_000)
-    : 60_000;
+    : 90_000;
 }
 
 function defaultModelFor(baseUrl: string) {
   return /api\.groq\.com/i.test(baseUrl)
-    ? "openai/gpt-oss-120b"
+    ? "openai/gpt-oss-20b"
     : "gpt-4o-mini";
 }
 
@@ -164,6 +164,9 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
         body: JSON.stringify({
           model: this.modelVersion,
           temperature: 0,
+          ...(/api\.groq\.com/i.test(this.baseUrl) && /^openai\/gpt-oss-/i.test(this.modelVersion)
+            ? { reasoning_effort: "low" }
+            : {}),
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt() },

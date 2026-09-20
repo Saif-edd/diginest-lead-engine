@@ -85,7 +85,7 @@ describe("qualitative schema and scoring", () => {
 
 describe("qualitative provider failure and idempotency", () => {
   it("uses a production Groq model by default when no model is configured", () => {
-    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.groq.com/openai/v1").modelVersion).toBe("openai/gpt-oss-120b");
+    expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.groq.com/openai/v1").modelVersion).toBe("openai/gpt-oss-20b");
     expect(new OpenAICompatibleQualitativeProvider("test-key", undefined, "https://api.openai.com/v1").modelVersion).toBe("gpt-4o-mini");
   });
 
@@ -101,7 +101,7 @@ describe("qualitative provider failure and idempotency", () => {
     }) as typeof fetch;
 
     try {
-      await new OpenAICompatibleQualitativeProvider("test-key", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1").analyze({
+      await new OpenAICompatibleQualitativeProvider("test-key", "openai/gpt-oss-20b", "https://api.groq.com/openai/v1").analyze({
         context: {
           business: { name: "Synthetic clinic", category: "Dentist", address: "Synthetic address" },
           objectiveAudit: {
@@ -120,6 +120,7 @@ describe("qualitative provider failure and idempotency", () => {
     }
 
     const messages = requestBody?.messages as Array<{ content: unknown }>;
+    expect(requestBody?.reasoning_effort).toBe("low");
     expect(messages[1].content).toHaveLength(1);
     const text = String((messages[1].content as Array<{ text: string }>)[0].text);
     expect(text).toContain('"screenshotAvailable": false');
