@@ -121,6 +121,7 @@ describe("qualitative provider failure and idempotency", () => {
 
     const messages = requestBody?.messages as Array<{ content: unknown }>;
     expect(requestBody?.reasoning_effort).toBe("low");
+    expect(requestBody?.max_tokens).toBe(4096);
     expect(messages[1].content).toHaveLength(1);
     const text = String((messages[1].content as Array<{ text: string }>)[0].text);
     expect(text).toContain('"screenshotAvailable": false');

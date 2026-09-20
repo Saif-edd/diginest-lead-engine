@@ -16,10 +16,17 @@ export class QualitativeProviderError extends Error {
 }
 
 function providerTimeoutMs() {
-  const configured = Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 90_000);
+  const configured = Number(process.env.QUALITATIVE_AI_TIMEOUT_MS ?? 120_000);
   return Number.isFinite(configured) && configured > 0
     ? Math.min(configured, 120_000)
-    : 90_000;
+    : 120_000;
+}
+
+function maxOutputTokens() {
+  const configured = Number(process.env.QUALITATIVE_AI_MAX_OUTPUT_TOKENS ?? 4_096);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.min(Math.max(Math.floor(configured), 1_024), 8_192)
+    : 4_096;
 }
 
 function defaultModelFor(baseUrl: string) {
@@ -169,6 +176,7 @@ export class OpenAICompatibleQualitativeProvider implements QualitativeProvider 
         body: JSON.stringify({
           model: this.modelVersion,
           temperature: 0,
+          max_tokens: maxOutputTokens(),
           ...(/api\.groq\.com/i.test(this.baseUrl) && /^openai\/gpt-oss-/i.test(this.modelVersion)
             ? { reasoning_effort: "low" }
             : {}),
