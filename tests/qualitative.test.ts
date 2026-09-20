@@ -128,6 +128,44 @@ describe("qualitative provider failure and idempotency", () => {
     expect(text).not.toContain("c3ludGhldGlj");
   });
 
+  it("omits screenshots for TokenWave Luna because vision is disabled", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      await new OpenAICompatibleQualitativeProvider("test-key", "gpt-5.6-luna", "https://tokenwave.ru/v1").analyze({
+        context: {
+          business: { name: "Synthetic clinic", category: "Dentist", address: "Synthetic address" },
+          objectiveAudit: {
+            objectiveAuditStatus: "COMPLETE",
+            h1: [],
+            schemaTypes: [],
+            deterministicSignals: {},
+            signalEvidence: {},
+            screenshotAvailable: true,
+          },
+        },
+        screenshotDataUrl: "data:image/png;base64,c3ludGhldGlj",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const messages = requestBody?.messages as Array<{ content: unknown }>;
+    expect(messages[1].content).toHaveLength(1);
+    const text = String((messages[1].content as Array<{ text: string }>)[0].text);
+    expect(text).toContain('"screenshotAvailable": false');
+    expect(text).toContain("The configured provider model does not support image input.");
+    expect(text).not.toContain("c3ludGhldGlj");
+  });
+
   it("surfaces invalid provider output without making a result", async () => {
     const lead = normalizeRows([{ name: "Clinic", address: "Dubai", website: "https://clinic.example", category: "Dentist" }]).leads[0];
     await expect(analyzeQualitative({ context: { business: { name: lead.name, category: lead.category, address: lead.address }, objectiveAudit: { objectiveAuditStatus: "COMPLETE", h1: [], schemaTypes: [], deterministicSignals: {}, signalEvidence: {}, screenshotAvailable: false } } }, { modelVersion: "test-model", analyze: async () => ({}) })).rejects.toThrow(QualitativeValidationError);

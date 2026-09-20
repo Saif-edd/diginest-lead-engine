@@ -33,8 +33,13 @@ function normalizeBaseUrl(value: string | undefined) {
 }
 
 function supportsVision(model: string, baseUrl: string) {
-  if (!/api\.groq\.com/i.test(baseUrl)) return true;
-  return /qwen\/qwen3\.(6|8)-27b|meta-llama\/llama-4-(scout|maverick)/i.test(model);
+  if (/api\.groq\.com/i.test(baseUrl)) {
+    return /qwen\/qwen3\.(6|8)-27b|meta-llama\/llama-4-(scout|maverick)/i.test(model);
+  }
+  if (/tokenwave\.ru/i.test(baseUrl)) {
+    return !/^(?:gpt-5\.6-luna|claude-sonnet-5)$/i.test(model);
+  }
+  return true;
 }
 
 function systemPrompt() {
